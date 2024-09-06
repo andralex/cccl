@@ -432,6 +432,13 @@ union kernel_arg
   It iterator;
 
   _CCCL_HOST_DEVICE kernel_arg() {} // in case It is not default-constructible
+
+  _CCCL_HOST_DEVICE kernel_arg(const kernel_arg& other) // in case It is not copy-constructible
+  {
+    // since we use kernel_arg only to pass data to the device, the contained data is semantically copyable, even if the
+    // type system is telling us otherwise.
+    ::cuda::std::memcpy(reinterpret_cast<char*>(this), reinterpret_cast<const char*>(&other), sizeof(kernel_arg));
+  }
 };
 
 template <typename It>
