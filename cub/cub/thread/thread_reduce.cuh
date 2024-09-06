@@ -91,6 +91,86 @@ constexpr bool enable_dpx_reduction()
 }
 // clang-format on
 
+
+// SM70+, HADD2/HMUL2, Sum/Mul SIMD reduction for half
+template <typename Input, typename ReductionOp, typename AccumT>
+_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE // clang-format off
+constexpr bool enable_half_sum_mul_simd_reduction()
+{
+  using T = decltype(::cuda::std::declval<Input>()[0]);
+  return (detail::static_size<Input>() >= 4)
+            && ::cuda::std::is_same<T, AccumT>::value
+            && ::cuda::std::is_same<T, __half>::value
+            && detail::is_one_of<ReductionOp, cub::Sum, cub::Mul>();
+}
+// clang-format on
+
+// SM80+, HADD2/HMUL2, Sum/Mul SIMD reduction for bfloat
+template <typename Input, typename ReductionOp, typename AccumT>
+_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE // clang-format off
+constexpr bool enable_bfloat_sum_mul_simd_reduction()
+{
+  using T = decltype(::cuda::std::declval<Input>()[0]);
+  return (detail::static_size<Input>() >= 4)
+            && ::cuda::std::is_same<T, AccumT>::value
+            && ::cuda::std::is_same<T, __nv_bfloat16>::value
+            && detail::is_one_of<ReductionOp, cub::Sum, cub::Mul>();
+}
+// clang-format on
+
+// SM90+, VHMNMX, Min/Max SIMD reduction for half/bfloat
+template <typename Input, typename ReductionOp, typename AccumT>
+_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE // clang-format off
+constexpr bool enable_half_bfloat_min_max_simd_reduction()
+{
+  using T = decltype(::cuda::std::declval<Input>()[0]);
+  using Lenght = ::cuda::std::integral_constant<int, detail::static_size<Input>()>;
+  return (Lenght{} >= 4)
+            && ::cuda::std::is_same<T, AccumT>::value
+            && detail::is_one_of<T, __half, __nv_bfloat16>()
+            && detail::is_one_of<ReductionOp, cub::Min, cub::Max>();
+}
+// clang-format on
+
+/***********************************************************************************************************************
+ * Binary/Ternary Reductions
+ **********************************************************************************************************************/
+
+// SM70+, IADD3, Integer ternary tree reduction
+template <typename Input, typename ReductionOp, typename AccumT>
+_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE // clang-format off
+constexpr bool enable_add_ternary_tree_reduction()
+{
+  using T = decltype(::cuda::std::declval<Input>()[0]);
+  return (detail::static_size<Input>() >= 6)
+            && ::cuda::std::is_same<T, AccumT>::value
+            && detail::is_one_of<T, int, unsigned, ::cuda::std::int64_t, ::cuda::std::uint64_t>()
+            && detail::is_one_of<ReductionOp, cub::Sum>();
+}
+// clang-format on
+
+//#  if defined(_CCCL_HAS_NVFP16)
+//#if defined(__CUDA_FP16_TYPES_EXIST__)
+//_LIBCUDACXX_HAS_NVFP16
+
+//#  if defined(_CCCL_HAS_NVBF16)
+//#if defined(__CUDA_BF16_TYPES_EXIST__)
+//_LIBCUDACXX_HAS_NVBF16
+
+// SM90+, VHMNMX, VIMNMX3 Min/Max ternary tree reduction for half/bfloat/32-bit integers
+template <typename Input, typename ReductionOp, typename AccumT>
+_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE // clang-format off
+constexpr bool enable_min_max_ternary_tree_reduction()
+{
+  using T = decltype(::cuda::std::declval<Input>()[0]);
+  return (detail::static_size<Input>() >= 6)
+            && ::cuda::std::is_same<T, AccumT>::value
+            && detail::is_one_of<T, __half, __half2, __nv_bfloat16, __nv_bfloat162, int, unsigned>()
+            && detail::is_one_of<ReductionOp, cub::Min, cub::Max>();
+}
+// clang-format on
+
+
 // Considering compiler vectorization with 3-way comparison, the number of SASS instructions is
 // Standard: ceil((L - 3) / 2) + 1
 //   replacing L with L/2 for SIMD
@@ -114,6 +194,29 @@ constexpr bool enable_dpx_reduction()
 // 14     |    7     |  5 // ***
 // 15     |    7     |  5 // ***
 // 16     |    8     |  6 // ***
+
+
+/***********************************************************************************************************************
+ * Internal Reductions
+ **********************************************************************************************************************/
+
+template <typename CastType, typename Input, ::cuda::std::size_t... I>
+_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE ::cuda::std::array<CastType, detail::static_size<Input>()>
+to_array_impl(const Input& input, ::cuda::std::index_sequence<I...>)
+{
+  using ArrayType = ::cuda::std::array<CastType, detail::static_size<Input>()>;
+  return ArrayType{static_cast<CastType>(input[I])...};
+}
+
+template <typename CastType = void, typename Input>
+_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE ::cuda::std::array<CastType, detail::static_size<Input>()>
+to_array(const Input& input)
+{
+  using InputType = ::cuda::std::__remove_cvref_t<decltype(input[0])>;
+  using CastType  = ::cuda::std::_If<::cuda::std::is_same<CastType, void>::value, InputType, CastType>;
+  return to_array_impl<CastType>(input, ::cuda::std::make_index_sequence<detail::static_size<Input>()>{});
+}
+
 
 template <typename AccumT, typename Input, typename ReductionOp>
 _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE AccumT
@@ -149,6 +252,32 @@ ThreadReduceDpx(const Input& input, ReductionOp reduction_op) -> ::cuda::std::__
   auto ret_value      = reduction_op(simd_values.first, simd_values.second);
   return (length % 2 == 0) ? ret_value : reduction_op(ret_value, input[length - 1]);
 }
+
+/// Specialization for DPX reduction
+template <typename Input, typename ReductionOp>
+_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE auto
+ThreadReduceSimd(const Input& input, ReductionOp reduction_op) -> ::cuda::std::__remove_cvref_t<decltype(input[0])>
+{
+  constexpr int simd_ratio = 2;
+  constexpr int length = detail::static_size<Input>();
+  using T              = ::cuda::std::__remove_cvref_t<decltype(input[0])>;
+  using SimdReduceOp   = cub_operator_to_simd_operator_t<ReductionOp, T>;
+  using SimdType      = to_simd_type_t<T>;
+  using SimdArrayType = SimdType[length / simd_ratio];
+  using UnpackedType  = T[simd_ratio];
+  auto array           = to_array(input);
+  auto simd_input     = ::cuda::std::bit_cast<SimdArrayType>(array); // odd?
+  auto simd_reduction = ThreadReduce(simd_input, SimdReduceOp{});
+  auto unpacked_values = ::cuda::std::bit_cast<UnpackedType>(simd_reduction);
+  auto ret_value      = reduction_op(unpacked_values[0], unpacked_values[1]);
+  return (length % 2 == 0) ? ret_value : reduction_op(ret_value, array[length - 1]);
+}
+
+
+/***********************************************************************************************************************
+ * Reduction Interface/Dispatch
+ **********************************************************************************************************************/
+
 
 // DPX/Sequential dispatch
 template <typename Input,
