@@ -563,7 +563,7 @@ struct policy_hub<RequiresStableAddress, ::cuda::std::tuple<RandomAccessIterator
     static constexpr bool exhaust_smem =
       bulk_copy_smem_for_tile_size<RandomAccessIteratorsIn...>(
         async_policy::block_threads * async_policy::min_items_per_thread)
-      > 48 * 1024;
+      > int{max_smem_per_block};
     static constexpr bool any_type_is_overalinged =
 #  if _CCCL_STD_VER >= 2017
       ((alignof(value_t<RandomAccessIteratorsIn>) > bulk_copy_alignment) || ...);
