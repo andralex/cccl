@@ -428,12 +428,13 @@ _CCCL_DEVICE void transform_kernel_impl(
 template <typename It>
 union kernel_arg
 {
-  aligned_base_ptr<value_t<It>> aligned_ptr;
+  aligned_base_ptr<value_t<It>> aligned_ptr; // first member is trivial
+  static_assert(::cuda::std::is_trivial<decltype(aligned_ptr)>::value, "");
   It iterator;
 
-  _CCCL_HOST_DEVICE kernel_arg() {} // in case It is not default-constructible
+  _CCCL_HOST_DEVICE kernel_arg() {} // needed in case It is not default-constructible
 
-  _CCCL_HOST_DEVICE kernel_arg(const kernel_arg& other) // in case It is not copy-constructible
+  _CCCL_HOST_DEVICE kernel_arg(const kernel_arg& other) // needed in case It is not copy-constructible
   {
     // since we use kernel_arg only to pass data to the device, the contained data is semantically copyable, even if the
     // type system is telling us otherwise.
@@ -445,7 +446,10 @@ template <typename It>
 _CCCL_HOST_DEVICE auto make_iterator_kernel_arg(It it) -> kernel_arg<It>
 {
   kernel_arg<It> arg;
-  arg.iterator = it;
+  // since we switch the active member of the union, we have to use placement new. This also uses the copy constructor
+  // of It, which works in more cases than assignment (e.g. thrust::transform_iterator with non-copy-assignable functor,
+  // e.g. in merge sort tests)
+  new (&arg.iterator) It(it);
   return arg;
 }
 
