@@ -109,7 +109,7 @@ _CCCL_DEVICE void transform_kernel_impl(
   RandomAccessIteratorsIn... ins)
 {
   auto op = [&](Offset i) {
-    out[i] = transform_op(ins[i]...);
+    out[i] = transform_op(THRUST_NS_QUALIFIER::raw_reference_cast(ins[i])...);
   };
   using OpT = decltype(op);
 
