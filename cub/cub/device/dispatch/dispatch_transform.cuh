@@ -168,11 +168,7 @@ template <int BlockDim, typename T>
 _CCCL_DEVICE _CCCL_FORCEINLINE void prefetch_tile(const T* addr, int tile_size)
 {
   constexpr int cacheline_size = 128;
-  if (!__isGlobal(addr)) // TODO(bgruber): do we need this?
-  {
-    _LIBCUDACXX_UNREACHABLE();
-  }
-  const int tile_size_bytes = tile_size * sizeof(T);
+  const int tile_size_bytes    = tile_size * sizeof(T);
   // prefetch does not stall and unrolling just generates a lot of unnecessary computations and predicate handling
 #pragma unroll 1
   for (int offset = threadIdx.x * cacheline_size; offset < tile_size_bytes; offset += BlockDim * cacheline_size)
