@@ -50,8 +50,6 @@
 
 #include <cuda/std/bit> // bit_cast
 #include <cuda/std/cstdint> // uint16_t
-#include <cuda/std/functional> // cuda::std::plus
-#include <cuda/std/utility> // pair
 
 // #include <functional> // std::plus
 
@@ -90,7 +88,6 @@ constexpr bool enable_dpx_reduction()
             && detail::is_one_of<ReductionOp, cub::Min, cub::Max, cub::Sum/*, std::plus<T>*/>();
 }
 // clang-format on
-
 
 // SM70+, HADD2/HMUL2, Sum/Mul SIMD reduction for half
 template <typename Input, typename ReductionOp, typename AccumT>
@@ -149,12 +146,12 @@ constexpr bool enable_add_ternary_tree_reduction()
 }
 // clang-format on
 
-//#  if defined(_CCCL_HAS_NVFP16)
-//#if defined(__CUDA_FP16_TYPES_EXIST__)
+// #  if defined(_CCCL_HAS_NVFP16)
+// #if defined(__CUDA_FP16_TYPES_EXIST__)
 //_LIBCUDACXX_HAS_NVFP16
 
-//#  if defined(_CCCL_HAS_NVBF16)
-//#if defined(__CUDA_BF16_TYPES_EXIST__)
+// #  if defined(_CCCL_HAS_NVBF16)
+// #if defined(__CUDA_BF16_TYPES_EXIST__)
 //_LIBCUDACXX_HAS_NVBF16
 
 // SM90+, VHMNMX, VIMNMX3 Min/Max ternary tree reduction for half/bfloat/32-bit integers
@@ -169,7 +166,6 @@ constexpr bool enable_min_max_ternary_tree_reduction()
             && detail::is_one_of<ReductionOp, cub::Min, cub::Max>();
 }
 // clang-format on
-
 
 // Considering compiler vectorization with 3-way comparison, the number of SASS instructions is
 // Standard: ceil((L - 3) / 2) + 1
@@ -195,17 +191,16 @@ constexpr bool enable_min_max_ternary_tree_reduction()
 // 15     |    7     |  5 // ***
 // 16     |    8     |  6 // ***
 
-
 /***********************************************************************************************************************
- * Internal Reductions
+ * Generic Array-like to Array Conversion
  **********************************************************************************************************************/
 
-template <typename CastType, typename Input, ::cuda::std::size_t... I>
+template <typename CastType, typename Input, ::cuda::std::size_t... i>
 _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE ::cuda::std::array<CastType, detail::static_size<Input>()>
-to_array_impl(const Input& input, ::cuda::std::index_sequence<I...>)
+to_array_impl(const Input& input, ::cuda::std::index_sequence<i...>)
 {
   using ArrayType = ::cuda::std::array<CastType, detail::static_size<Input>()>;
-  return ArrayType{static_cast<CastType>(input[I])...};
+  return ArrayType{static_cast<CastType>(input[i])...};
 }
 
 template <typename CastType = void, typename Input>
@@ -217,6 +212,9 @@ to_array(const Input& input)
   return to_array_impl<CastType>(input, ::cuda::std::make_index_sequence<detail::static_size<Input>()>{});
 }
 
+/***********************************************************************************************************************
+ * Internal Reduction Algorithms: Sequential, Binary, Ternary
+ **********************************************************************************************************************/
 
 template <typename AccumT, typename Input, typename ReductionOp>
 _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE AccumT
@@ -231,53 +229,79 @@ ThreadReduceSequential(const Input& input, ReductionOp reduction_op)
   return retval;
 }
 
-/// Specialization for DPX reduction
-template <typename Input, typename ReductionOp>
-_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE auto
-ThreadReduceDpx(const Input& input, ReductionOp reduction_op) -> ::cuda::std::__remove_cvref_t<decltype(input[0])>
+template <typename AccumT, typename Input, typename ReductionOp>
+_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE AccumT
+ThreadReduceBinaryTree(const Input& input, ReductionOp reduction_op)
 {
-  using T              = ::cuda::std::__remove_cvref_t<decltype(input[0])>;
-  constexpr int length = detail::static_size<Input>();
-  T array[length];
+  constexpr auto length = detail::static_size<Input>();
+  auto array            = to_array<AccumT>(input);
 #  pragma unroll
-  for (int i = 0; i < length; ++i)
+  for (int i = 1; i < length; i *= 2)
   {
-    array[i] = input[i];
+#  pragma unroll
+    for (int j = 0; j + i < length; j += i * 2)
+    {
+      array[j] = reduction_op(array[j], array[j + i]);
+    }
   }
-  using DpxReduceOp   = cub_operator_to_dpx_t<ReductionOp, T>;
-  using SimdType      = ::cuda::std::pair<T, T>;
-  auto unsigned_input = reinterpret_cast<const unsigned*>(array);
-  auto simd_reduction = ThreadReduceSequential<length / 2>(unsigned_input, DpxReduceOp{});
-  auto simd_values    = ::cuda::std::bit_cast<SimdType>(simd_reduction);
-  auto ret_value      = reduction_op(simd_values.first, simd_values.second);
-  return (length % 2 == 0) ? ret_value : reduction_op(ret_value, input[length - 1]);
+  return array[0];
 }
 
-/// Specialization for DPX reduction
+template <typename AccumT, typename Input, typename ReductionOp>
+_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE AccumT
+ThreadReduceTernaryTree(const Input& input, ReductionOp reduction_op)
+{
+  constexpr auto length = detail::static_size<Input>();
+  auto array            = to_array<AccumT>(input);
+#  pragma unroll
+  for (int i = 1; i < length; i *= 3)
+  {
+#  pragma unroll
+    for (int j = 0; j + i < length; j += i * 3)
+    {
+      array[j] = (j + i * 2 < length) ? reduction_op(array[j], reduction_op(array[j + i], array[j + i * 2]))
+                                      : reduction_op(array[j], array[j + i]);
+    }
+  }
+  return array[0];
+}
+
+/***********************************************************************************************************************
+ * SIMD Reduction
+ **********************************************************************************************************************/
+
 template <typename Input, typename ReductionOp>
 _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE auto
 ThreadReduceSimd(const Input& input, ReductionOp reduction_op) -> ::cuda::std::__remove_cvref_t<decltype(input[0])>
 {
-  constexpr int simd_ratio = 2;
-  constexpr int length = detail::static_size<Input>();
-  using T              = ::cuda::std::__remove_cvref_t<decltype(input[0])>;
-  using SimdReduceOp   = cub_operator_to_simd_operator_t<ReductionOp, T>;
-  using SimdType      = to_simd_type_t<T>;
-  using SimdArrayType = SimdType[length / simd_ratio];
-  using UnpackedType  = T[simd_ratio];
-  auto array           = to_array(input);
-  auto simd_input     = ::cuda::std::bit_cast<SimdArrayType>(array); // odd?
-  auto simd_reduction = ThreadReduce(simd_input, SimdReduceOp{});
+  // cub_operator_to_simd_operator_t<ReductionOp, T>;
+  using T                       = ::cuda::std::__remove_cvref_t<decltype(input[0])>;
+  using SimdReduceOp            = cub_operator_to_dpx_t<ReductionOp, T>;
+  constexpr auto simd_ratio     = SimdReduceOp::ratio;
+  constexpr auto length         = detail::static_size<Input>();
+  constexpr auto simd_size      = length / simd_ratio;
+  constexpr auto length_rounded = (length / simd_ratio) * simd_ratio; // TODO: replace with round_up()
+  using ArrayRouned             = T[length_rounded];
+  using SimdType                = unsigned; // to_simd_type_t<T>;
+  using SimdArray               = SimdType[simd_ratio];
+  using UnpackedType            = T[simd_ratio];
+  // TODO: switch to std::span when C++11 is dropped
+  auto simd_input      = ::cuda::std::bit_cast<SimdArray>(reinterpret_cast<const ArrayRouned*>(input));
+  auto simd_reduction  = ThreadReduce(simd_input, SimdReduceOp{});
   auto unpacked_values = ::cuda::std::bit_cast<UnpackedType>(simd_reduction);
-  auto ret_value      = reduction_op(unpacked_values[0], unpacked_values[1]);
-  return (length % 2 == 0) ? ret_value : reduction_op(ret_value, array[length - 1]);
+  auto ret_value       = ThreadReduce(unpacked_values, reduction_op);
+  // compute tail elements if needed
+#  pragma unroll
+  for (int i = length_rounded; i < length; ++i)
+  {
+    ret_value = reduction_op(ret_value, input[i]);
+  }
+  return ret_value;
 }
-
 
 /***********************************************************************************************************************
  * Reduction Interface/Dispatch
  **********************************************************************************************************************/
-
 
 // DPX/Sequential dispatch
 template <typename Input,
