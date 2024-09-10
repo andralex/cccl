@@ -35,6 +35,8 @@
 
 #include <cub/config.cuh>
 
+#include "cub/thread/thread_load.cuh"
+
 #if defined(_CCCL_IMPLICIT_SYSTEM_HEADER_GCC)
 #  pragma GCC system_header
 #elif defined(_CCCL_IMPLICIT_SYSTEM_HEADER_CLANG)
@@ -274,29 +276,26 @@ template <typename Input, typename ReductionOp>
 _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE auto
 ThreadReduceSimd(const Input& input, ReductionOp reduction_op) -> ::cuda::std::__remove_cvref_t<decltype(input[0])>
 {
-  // cub_operator_to_simd_operator_t<ReductionOp, T>;
   using T                       = ::cuda::std::__remove_cvref_t<decltype(input[0])>;
-  using SimdReduceOp            = cub_operator_to_dpx_t<ReductionOp, T>;
+  using SimdReduceOp            = cub_operator_to_simd_operator_t<ReductionOp, T>;
   constexpr auto simd_ratio     = SimdReduceOp::ratio;
   constexpr auto length         = detail::static_size<Input>();
   constexpr auto simd_size      = length / simd_ratio;
+  constexpr auto remains        = length % simd_ratio;
   constexpr auto length_rounded = (length / simd_ratio) * simd_ratio; // TODO: replace with round_up()
-  using ArrayRouned             = T[length_rounded];
-  using SimdType                = unsigned; // to_simd_type_t<T>;
+  using ArrayRounded            = T[length_rounded];
+  using SimdType                = simd_type_t<T>;
   using SimdArray               = SimdType[simd_ratio];
   using UnpackedType            = T[simd_ratio];
   // TODO: switch to std::span when C++11 is dropped
-  auto simd_input      = ::cuda::std::bit_cast<SimdArray>(reinterpret_cast<const ArrayRouned*>(input));
+  auto simd_input      = ::cuda::std::bit_cast<SimdArray>(reinterpret_cast<const ArrayRounded*>(input));
   auto simd_reduction  = ThreadReduce(simd_input, SimdReduceOp{});
   auto unpacked_values = ::cuda::std::bit_cast<UnpackedType>(simd_reduction);
-  auto ret_value       = ThreadReduce(unpacked_values, reduction_op);
-  // compute tail elements if needed
-#  pragma unroll
-  for (int i = length_rounded; i < length; ++i)
-  {
-    ret_value = reduction_op(ret_value, input[i]);
-  }
-  return ret_value;
+  // copy unpackad values and input array tail into a single array to exploit further optimizations, e.g. tree reduction
+  T final_array[simd_ratio + remains];
+  UnrolledCopy<simd_ratio>(unpacked_values, final_array);
+  UnrolledCopy<remains>(input + length_rounded, final_array + simd_ratio);
+  return ThreadReduce(final_array, reduction_op);
 }
 
 /***********************************************************************************************************************
