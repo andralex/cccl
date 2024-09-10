@@ -252,7 +252,8 @@ OutputIt THRUST_FUNCTION cub_transform_many(
   }
 
   constexpr auto requires_stable_address =
-    !::cuda::allows_copied_arguments<TransformOp, iterator_reference_t<InputIts>...>::value;
+    !::cuda::allows_copied_arguments<TransformOp, detail::raw_reference<iterator_reference_t<InputIts>>...>::value;
+
   cudaError_t status;
   THRUST_INDEX_TYPE_DISPATCH(
     status,
