@@ -878,15 +878,11 @@ struct dispatch_t<RequiresStableAddress,
       return last_counts;
     };
     PoorExpected<elem_counts> config = [&]() {
-      NV_IF_TARGET(
-        NV_IS_HOST,
-        (
-          // this static variable exists for each template instantiation of the surrounding function and class, on which
-          // the chosen element count solely depends (assuming max SMEM is constant during a program execution)
-          static auto cached_config = determine_element_counts(); return cached_config;),
-        (
-          // we cannot cache the determined element count in device code
-          return determine_element_counts();));
+      NV_IF_TARGET(NV_IS_HOST,
+                   (static auto cached_config = determine_element_counts(); return cached_config;),
+                   (
+                     // we cannot cache the determined element count in device code
+                     return determine_element_counts();));
     }();
     if (!config)
     {
