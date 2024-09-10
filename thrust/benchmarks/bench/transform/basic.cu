@@ -33,8 +33,8 @@
 #include <thrust/transform.h>
 #include <thrust/zip_function.h>
 
+#include <cuda/__functional/address_stability.h>
 #include <cuda/functional>
-#include <cuda/std/__type_traits/address_stability.h>
 
 #include <nvbench_helper.cuh>
 
