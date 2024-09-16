@@ -42,6 +42,7 @@
 
 #include <cuda/std/array> // array
 #include <cuda/std/cstddef> // size_t
+#include <cuda/std/type_traits> // _If
 #include <cuda/std/utility> // index_sequence
 
 CUB_NAMESPACE_BEGIN
@@ -69,8 +70,8 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE ::cuda::std::array<CastType, cub:
 to_array(const Input& input)
 {
   using InputType = ::cuda::std::__remove_cvref_t<decltype(input[0])>;
-  using CastType  = ::cuda::std::_If<::cuda::std::is_same<CastType, void>::value, InputType, CastType>;
-  return to_array_impl<CastType>(input, ::cuda::std::make_index_sequence<cub::detail::static_size<Input>()>{});
+  using CastType1 = ::cuda::std::_If<::cuda::std::is_same<CastType, void>::value, InputType, CastType>;
+  return to_array_impl<CastType1>(input, ::cuda::std::make_index_sequence<cub::detail::static_size<Input>()>{});
 }
 
 #endif // !DOXYGEN_SHOULD_SKIP_THIS
