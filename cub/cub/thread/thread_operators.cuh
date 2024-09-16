@@ -86,6 +86,9 @@ using Sum        = ::cuda::std::plus<>;
 using Mul        = ::cuda::std::multiplies<>;
 using Difference = ::cuda::std::minus<>;
 using Division   = ::cuda::std::divides<>;
+using BitAnd     = ::cuda::std::bit_and<>;
+using BitOr      = ::cuda::std::bit_or<>;
+using BitXor     = ::cuda::std::bit_xor<>;
 #else
 /// @brief Default equality functor
 struct Equality
@@ -154,6 +157,42 @@ struct Division
   operator()(T&& t, U&& u) const -> decltype(::cuda::std::forward<T>(t) / ::cuda::std::forward<U>(u))
   {
     return ::cuda::std::forward<T>(t) / ::cuda::std::forward<U>(u);
+  }
+};
+
+/// @brief Default bitwise and functor
+struct BitAnd
+{
+  /// Binary division operator, returns `t & u`
+  template <typename T, typename U>
+  _CCCL_HOST_DEVICE _CCCL_FORCEINLINE auto
+  operator()(T&& t, U&& u) const -> decltype(::cuda::std::forward<T>(t) & ::cuda::std::forward<U>(u))
+  {
+    return ::cuda::std::forward<T>(t) & ::cuda::std::forward<U>(u);
+  }
+};
+
+/// @brief Default bitwise or functor
+struct BitOr
+{
+  /// Binary division operator, returns `t | u`
+  template <typename T, typename U>
+  _CCCL_HOST_DEVICE _CCCL_FORCEINLINE auto
+  operator()(T&& t, U&& u) const -> decltype(::cuda::std::forward<T>(t) | ::cuda::std::forward<U>(u))
+  {
+    return ::cuda::std::forward<T>(t) | ::cuda::std::forward<U>(u);
+  }
+};
+
+/// @brief Default bitwise xor functor
+struct BitXor
+{
+  /// Binary division operator, returns `t ^ u`
+  template <typename T, typename U>
+  _CCCL_HOST_DEVICE _CCCL_FORCEINLINE auto
+  operator()(T&& t, U&& u) const -> decltype(::cuda::std::forward<T>(t) ^ ::cuda::std::forward<U>(u))
+  {
+    return ::cuda::std::forward<T>(t) ^ ::cuda::std::forward<U>(u);
   }
 };
 
@@ -441,9 +480,9 @@ _CCCL_HOST_DEVICE BinaryFlip<BinaryOpT> MakeBinaryFlip(BinaryOpT binary_op)
 namespace internal
 {
 template <typename T>
-struct SimdMin
+struct SimdMin : cub::Min
 {
-  static_assert(detail::always_false<T>(), "SimdMin is not supported for this type");
+  using type = T;
 };
 
 template <>
@@ -501,9 +540,9 @@ struct SimdMin<__nv_bfloat16>
 //----------------------------------------------------------------------------------------------------------------------
 
 template <typename T>
-struct SimdMax
+struct SimdMax : cub::Max
 {
-  static_assert(detail::always_false<T>(), "SimdMax is not supported for this type");
+  using type = T;
 };
 
 template <>
@@ -561,9 +600,9 @@ struct SimdMax<__nv_bfloat16>
 //----------------------------------------------------------------------------------------------------------------------
 
 template <typename T>
-struct SimdSum
+struct SimdSum : cub::Sum
 {
-  static_assert(detail::always_false<T>(), "SimdSum is not supported for this type");
+  static constexpr auto ratio = 1;
 };
 
 template <>
@@ -617,9 +656,9 @@ struct SimdSum<__nv_bfloat16>
 //----------------------------------------------------------------------------------------------------------------------
 
 template <typename T>
-struct SimdMul
+struct SimdMul : cub::Mul
 {
-  static_assert(detail::always_false<T>(), "SimdSum is not supported for this type");
+  static constexpr auto ratio = 1;
 };
 
 #if defined(_CCCL_HAS_NVFP16)
@@ -657,7 +696,7 @@ struct SimdMul<__nv_bfloat16>
 template <typename ReduceOp, typename T>
 struct CubOperatorToSimdOperator
 {
-  static_assert(detail::always_false<T>(), "Simd is not supported for this operator");
+  using type = T;
 };
 
 template <typename T>
@@ -692,7 +731,7 @@ using cub_operator_to_simd_operator_t = typename CubOperatorToSimdOperator<Reduc
 template <typename T>
 struct SimdType
 {
-  static_assert(detail::always_false<T>(), "SimdType is not supported for this type");
+  using type = T;
 };
 
 template <>
