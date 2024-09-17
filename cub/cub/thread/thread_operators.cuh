@@ -771,55 +771,6 @@ using cub_operator_to_simd_operator_t = typename CubOperatorToSimdOperator<Reduc
 template <typename ReduceOp, typename T>
 using simd_type_t = typename CubOperatorToSimdOperator<ReduceOp, T>::simd_type;
 
-//template <typename ReduceOp, typename T>
-//_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE constexpr int simd_ratio()
-//{
-//  return sizeof(simd_type_t<ReduceOp, T>) / sizeof(T);
-//}
-
-//----------------------------------------------------------------------------------------------------------------------
-/*
-template <typename ReduceOp, typename T>
-struct SimdType
-{
-  using type = T;
-};
-
-template <>
-struct SimdType<::cuda::std::int16_t>
-{
-  using type = unsigned;
-};
-
-template <>
-struct SimdType<::cuda::std::uint16_t>
-{
-  using type = unsigned;
-};
-
-#if defined(_CCCL_HAS_NVFP16)
-
-template <>
-struct SimdType<__half>
-{
-  using type = __half2;
-};
-
-#endif // defined (_CCCL_HAS_NVFP16)
-
-#if defined(_CCCL_HAS_NVBF16)
-
-template <>
-struct SimdType<__nv_bfloat16>
-{
-  using type = __nv_bfloat162;
-};
-
-#endif // defined (_CCCL_HAS_NVBF16)
-
-template <typename ReduceOp, typename T>
-using simd_type_t = typename SimdType<ReduceOp, T>::type;
-*/
 } // namespace internal
 
 CUB_NAMESPACE_END

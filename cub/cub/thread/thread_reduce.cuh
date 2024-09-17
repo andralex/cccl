@@ -35,7 +35,6 @@
 
 #include <cub/config.cuh>
 
-
 #if defined(_CCCL_IMPLICIT_SYSTEM_HEADER_GCC)
 #  pragma GCC system_header
 #elif defined(_CCCL_IMPLICIT_SYSTEM_HEADER_CLANG)
@@ -44,7 +43,6 @@
 #  pragma system_header
 #endif // no system header
 
-#include "cub/thread/thread_load.cuh"
 #include <cub/detail/array_utils.cuh> // to_array()
 #include <cub/detail/type_traits.cuh> // are_same()
 #include <cub/thread/thread_operators.cuh> // cub_operator_to_dpx_t
@@ -56,9 +54,12 @@
 #include <cuda/std/cstdint> // uint16_t
 #include <cuda/std/cstring> // memcpy
 
+#include "cub/thread/thread_load.cuh"
+
 CUB_NAMESPACE_BEGIN
 
-namespace  detail {
+namespace detail
+{
 
 // NOTE: bit_cast cannot be always used because __half, __nv_bfloat16, etc. are not trivially copyable
 template <typename Output, bool AllowPartialCopy = false, typename Input>
@@ -71,7 +72,6 @@ _CCCL_DEVICE _CCCL_FORCEINLINE Output unsafe_bitcast(const Input& input)
 }
 
 } // namespace detail
-
 
 // forward declaration
 /**

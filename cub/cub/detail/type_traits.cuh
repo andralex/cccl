@@ -48,8 +48,8 @@
 _CCCL_SUPPRESS_DEPRECATED_PUSH
 #include <cuda/std/functional>
 _CCCL_SUPPRESS_DEPRECATED_POP
-#include <cuda/std/type_traits>
 #include <cuda/std/array>
+#include <cuda/std/type_traits>
 
 #define _CUB_TEMPLATE_REQUIRES(...) ::cuda::std::__enable_if_t<(__VA_ARGS__)>* = nullptr
 
