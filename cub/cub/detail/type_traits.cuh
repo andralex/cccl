@@ -49,6 +49,7 @@ _CCCL_SUPPRESS_DEPRECATED_PUSH
 #include <cuda/std/functional>
 _CCCL_SUPPRESS_DEPRECATED_POP
 #include <cuda/std/type_traits>
+#include <cuda/std/array>
 
 #define _CUB_TEMPLATE_REQUIRES(...) ::cuda::std::__enable_if_t<(__VA_ARGS__)>* = nullptr
 
@@ -141,11 +142,15 @@ struct StaticSize
 };
 
 template <typename T>
-struct StaticSize<T,
-                  ::cuda::std::void_t<decltype(::cuda::std::integral_constant<int, ::cuda::std::declval<T>().size()>{})>>
+struct StaticSize<T, ::cuda::std::void_t<decltype(::cuda::std::declval<T>().size())>>
 {
-  static_assert(::cuda::std::is_trivially_constructible<T>::value, "T must be trivially constructible");
   static constexpr auto value = T{}.size();
+};
+
+template <typename T, ::cuda::std::size_t N>
+struct StaticSize<::cuda::std::array<T, N>, void>
+{
+  static constexpr auto value = N;
 };
 
 template <typename T, ::cuda::std::size_t N>

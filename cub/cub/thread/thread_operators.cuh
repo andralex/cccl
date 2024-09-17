@@ -55,8 +55,6 @@
 #include <cuda/std/type_traits> // cuda::std::common_type
 #include <cuda/std/utility> // cuda::std::forward
 
-// #include <functional> // std::plus
-
 CUB_NAMESPACE_BEGIN
 
 /// @brief Inequality functor (wraps equality functor)
@@ -479,15 +477,20 @@ _CCCL_HOST_DEVICE BinaryFlip<BinaryOpT> MakeBinaryFlip(BinaryOpT binary_op)
 
 namespace internal
 {
+
 template <typename T>
 struct SimdMin : cub::Min
 {
-  using type = T;
+  using simd_type = T;
+
+  static constexpr auto ratio = 1;
 };
 
 template <>
 struct SimdMin<::cuda::std::int16_t>
 {
+  using simd_type = unsigned;
+
   static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE unsigned operator()(unsigned a, unsigned b) const
@@ -499,6 +502,8 @@ struct SimdMin<::cuda::std::int16_t>
 template <>
 struct SimdMin<::cuda::std::uint16_t>
 {
+  using simd_type = unsigned;
+
   static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE unsigned operator()(unsigned a, unsigned b) const
@@ -512,6 +517,8 @@ struct SimdMin<::cuda::std::uint16_t>
 template <>
 struct SimdMin<__half> : cub::Min
 {
+  using simd_type = __half2;
+
   static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __half2 operator()(__half2 a, __half2 b) const
@@ -527,6 +534,8 @@ struct SimdMin<__half> : cub::Min
 template <>
 struct SimdMin<__nv_bfloat16>
 {
+  using simd_type = __nv_bfloat162;
+
   static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 operator()(__nv_bfloat162 a, __nv_bfloat162 b) const
@@ -542,12 +551,16 @@ struct SimdMin<__nv_bfloat16>
 template <typename T>
 struct SimdMax : cub::Max
 {
-  using type = T;
+  using simd_type = T;
+
+  static constexpr auto ratio = 1;
 };
 
 template <>
 struct SimdMax<::cuda::std::int16_t>
 {
+  using simd_type = unsigned;
+
   static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE unsigned operator()(unsigned a, unsigned b) const
@@ -559,6 +572,8 @@ struct SimdMax<::cuda::std::int16_t>
 template <>
 struct SimdMax<::cuda::std::uint16_t>
 {
+  using simd_type = unsigned;
+
   static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE unsigned operator()(unsigned a, unsigned b) const
@@ -572,6 +587,8 @@ struct SimdMax<::cuda::std::uint16_t>
 template <>
 struct SimdMax<__half>
 {
+  using simd_type = __half2;
+
   static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __half2 operator()(__half2 a, __half2 b) const
@@ -587,7 +604,7 @@ struct SimdMax<__half>
 template <>
 struct SimdMax<__nv_bfloat16>
 {
-  static constexpr auto ratio = 2;
+  using simd_type = __nv_bfloat162;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 operator()(__nv_bfloat162 a, __nv_bfloat162 b) const
   {
@@ -602,12 +619,18 @@ struct SimdMax<__nv_bfloat16>
 template <typename T>
 struct SimdSum : cub::Sum
 {
+  using simd_type = T;
+
   static constexpr auto ratio = 1;
 };
 
 template <>
 struct SimdSum<::cuda::std::int16_t>
 {
+  using simd_type = unsigned;
+
+  static constexpr auto ratio = 2;
+
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE unsigned operator()(unsigned a, unsigned b) const
   {
     return __vadd2(a, b);
@@ -617,6 +640,10 @@ struct SimdSum<::cuda::std::int16_t>
 template <>
 struct SimdSum<::cuda::std::uint16_t>
 {
+  using simd_type = unsigned;
+
+  static constexpr auto ratio = 2;
+
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE unsigned operator()(unsigned a, unsigned b) const
   {
     return __vadd2(a, b);
@@ -628,6 +655,8 @@ struct SimdSum<::cuda::std::uint16_t>
 template <>
 struct SimdSum<__half>
 {
+  using simd_type = __half2;
+
   static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __half2 operator()(__half2 a, __half2 b) const
@@ -643,6 +672,8 @@ struct SimdSum<__half>
 template <>
 struct SimdSum<__nv_bfloat16>
 {
+  using simd_type = __nv_bfloat162;
+
   static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 operator()(__nv_bfloat162 a, __nv_bfloat162 b) const
@@ -658,6 +689,8 @@ struct SimdSum<__nv_bfloat16>
 template <typename T>
 struct SimdMul : cub::Mul
 {
+  using simd_type = T;
+
   static constexpr auto ratio = 1;
 };
 
@@ -666,6 +699,8 @@ struct SimdMul : cub::Mul
 template <>
 struct SimdMul<__half>
 {
+  using simd_type = __half2;
+
   static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __half2 operator()(__half2 a, __half2 b) const
@@ -681,6 +716,8 @@ struct SimdMul<__half>
 template <>
 struct SimdMul<__nv_bfloat16>
 {
+  using simd_type = __nv_bfloat162;
+
   static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 operator()(__nv_bfloat162 a, __nv_bfloat162 b) const
@@ -696,39 +733,53 @@ struct SimdMul<__nv_bfloat16>
 template <typename ReduceOp, typename T>
 struct CubOperatorToSimdOperator
 {
-  using type = T;
+  using type      = ReduceOp;
+  using simd_type = T;
 };
 
 template <typename T>
 struct CubOperatorToSimdOperator<cub::Min, T>
 {
-  using type = SimdMin<T>;
+  using type      = SimdMin<T>;
+  using simd_type = typename type::simd_type;
 };
 
 template <typename T>
 struct CubOperatorToSimdOperator<cub::Max, T>
 {
-  using type = SimdMax<T>;
+  using type      = SimdMax<T>;
+  using simd_type = typename type::simd_type;
 };
 
 template <typename T>
 struct CubOperatorToSimdOperator<cub::Sum, T>
 {
-  using type = SimdSum<T>;
+  using type      = SimdSum<T>;
+  using simd_type = typename type::simd_type;
 };
 
 template <typename T>
 struct CubOperatorToSimdOperator<cub::Mul, T>
 {
-  using type = SimdMul<T>;
+  using type      = SimdMul<T>;
+  using simd_type = typename type::simd_type;
 };
 
 template <typename ReduceOp, typename T>
 using cub_operator_to_simd_operator_t = typename CubOperatorToSimdOperator<ReduceOp, T>::type;
 
-//----------------------------------------------------------------------------------------------------------------------
+template <typename ReduceOp, typename T>
+using simd_type_t = typename CubOperatorToSimdOperator<ReduceOp, T>::simd_type;
 
-template <typename T>
+//template <typename ReduceOp, typename T>
+//_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE constexpr int simd_ratio()
+//{
+//  return sizeof(simd_type_t<ReduceOp, T>) / sizeof(T);
+//}
+
+//----------------------------------------------------------------------------------------------------------------------
+/*
+template <typename ReduceOp, typename T>
 struct SimdType
 {
   using type = T;
@@ -746,7 +797,7 @@ struct SimdType<::cuda::std::uint16_t>
   using type = unsigned;
 };
 
-#if defined (_CCCL_HAS_NVFP16)
+#if defined(_CCCL_HAS_NVFP16)
 
 template <>
 struct SimdType<__half>
@@ -756,7 +807,7 @@ struct SimdType<__half>
 
 #endif // defined (_CCCL_HAS_NVFP16)
 
-#if defined (_CCCL_HAS_NVBF16)
+#if defined(_CCCL_HAS_NVBF16)
 
 template <>
 struct SimdType<__nv_bfloat16>
@@ -766,9 +817,9 @@ struct SimdType<__nv_bfloat16>
 
 #endif // defined (_CCCL_HAS_NVBF16)
 
-template <typename T>
-using simd_type_t = typename SimdType<T>::type;
-
+template <typename ReduceOp, typename T>
+using simd_type_t = typename SimdType<ReduceOp, T>::type;
+*/
 } // namespace internal
 
 CUB_NAMESPACE_END
