@@ -310,6 +310,22 @@ ThreadReduceTernaryTree(const Input& input, ReductionOp reduction_op)
  * SIMD Reduction
  **********************************************************************************************************************/
 
+template <typename ReductionOp,
+          typename SimdReduceOp,
+          _CUB_TEMPLATE_REQUIRES(::cuda::std::is_same<ReductionOp, SimdReduceOp>::value)>
+_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE ReductionOp GetSimdReduceOp(ReductionOp reduction_op)
+{
+  return reduction_op;
+}
+
+template <typename ReductionOp,
+          typename SimdReduceOp,
+          _CUB_TEMPLATE_REQUIRES(!::cuda::std::is_same<ReductionOp, SimdReduceOp>::value)>
+_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE SimdReduceOp GetSimdReduceOp(ReductionOp)
+{
+  return SimdReduceOp{};
+}
+
 template <typename Input, typename ReductionOp, _CUB_TEMPLATE_REQUIRES(cub::detail::static_size<Input>() == 1)>
 _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE auto
 ThreadReduceSimd(const Input& input, ReductionOp) -> ::cuda::std::__remove_cvref_t<decltype(input[0])>
@@ -331,10 +347,11 @@ ThreadReduceSimd(const Input& input, ReductionOp reduction_op) -> ::cuda::std::_
   using UnpackedType            = ::cuda::std::array<T, simd_ratio>;
   using SimdArray               = ::cuda::std::array<SimdType, length / simd_ratio>;
   static_assert(simd_ratio == 1 || simd_ratio == 2, "Only SIMD size <= 2 is supported");
+  auto simd_reduce_op = GetSimdReduceOp<ReductionOp, SimdReduceOp>(reduction_op);
   T local_array[length_rounded];
   UnrolledCopy<length_rounded>(input, local_array);
   auto simd_input         = unsafe_bitcast<SimdArray>(local_array);
-  SimdType simd_reduction = ThreadReduce(simd_input, SimdReduceOp{});
+  SimdType simd_reduction = ThreadReduce(simd_input, simd_reduce_op);
   auto unpacked_values    = unsafe_bitcast<UnpackedType>(simd_reduction);
   if _CCCL_CONSTEXPR_CXX17 (simd_ratio == 1)
   {
