@@ -52,7 +52,6 @@
 #include <cuda/std/bit> // bit_cast
 #include <cuda/std/cassert> // assert
 #include <cuda/std/cstdint> // uint16_t
-#include <cuda/std/cstring> // memcpy
 
 #include "cub/thread/thread_load.cuh"
 
