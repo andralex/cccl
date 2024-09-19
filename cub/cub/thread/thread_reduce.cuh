@@ -45,6 +45,7 @@
 
 #include <cub/detail/array_utils.cuh> // to_array()
 #include <cub/detail/type_traits.cuh> // are_same()
+#include <cub/thread/thread_load.cuh> // UnrolledCopy
 #include <cub/thread/thread_operators.cuh> // cub_operator_to_dpx_t
 #include <cub/util_namespace.cuh> // CUB_NAMESPACE_BEGIN
 
@@ -53,19 +54,17 @@
 #include <cuda/std/cassert> // assert
 #include <cuda/std/cstdint> // uint16_t
 
-#include "cub/thread/thread_load.cuh"
-
 CUB_NAMESPACE_BEGIN
 
 namespace detail
 {
 
 // NOTE: bit_cast cannot be always used because __half, __nv_bfloat16, etc. are not trivially copyable
-template <typename Output, bool AllowPartialCopy = false, typename Input>
-_CCCL_DEVICE _CCCL_FORCEINLINE Output unsafe_bitcast(const Input& input)
+template <typename Output, typename Input>
+_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE Output unsafe_bitcast(const Input& input)
 {
   Output output;
-  static_assert(AllowPartialCopy || sizeof(input) == sizeof(output), "wrong size");
+  static_assert(sizeof(input) == sizeof(output), "wrong size");
   ::memcpy(&output, &input, sizeof(input));
   return output;
 }
@@ -370,13 +369,13 @@ ThreadReduceSimd(const Input& input, ReductionOp reduction_op) -> ::cuda::std::_
     // Create a reversed copy of the SIMD reduction result and apply the SIMD operator.
     // This avoids redundant instructions for converting to and from 32-bit register size
     T unpacked_values_rev[] = {unpacked_values[1], unpacked_values[0]};
-    auto simd_reduction_rev = unsafe_bitcast<SimdType, true>(unpacked_values_rev);
+    auto simd_reduction_rev = unsafe_bitcast<SimdType>(unpacked_values_rev);
     SimdType result         = SimdReduceOp{}(simd_reduction, simd_reduction_rev);
     // repeat the same optimization for the last element
     if _CCCL_CONSTEXPR_CXX17 (length % simd_ratio == 1)
     {
       T tail[]       = {input[length - 1], T{}};
-      auto tail_simd = unsafe_bitcast<SimdType, true>(tail);
+      auto tail_simd = unsafe_bitcast<SimdType>(tail);
       result         = SimdReduceOp{}(result, tail_simd);
     }
     return unsafe_bitcast<UnpackedType>(result)[0];
