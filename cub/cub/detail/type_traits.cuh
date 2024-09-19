@@ -66,19 +66,19 @@ using invoke_result_t =
 #endif
 
 template <typename T, typename... TArgs>
-_CCCL_NODISCARD _CCCL_HOST_DEVICE _CCCL_FORCEINLINE constexpr bool are_same()
+_CCCL_NODISCARD _CCCL_HOST_DEVICE constexpr bool are_same()
 {
   return ::cuda::std::conjunction<::cuda::std::is_same<T, TArgs>...>::value;
 }
 
 template <typename T, typename... TArgs>
-_CCCL_NODISCARD _CCCL_HOST_DEVICE _CCCL_FORCEINLINE constexpr bool is_one_of()
+_CCCL_NODISCARD _CCCL_HOST_DEVICE constexpr bool is_one_of()
 {
   return ::cuda::std::disjunction<::cuda::std::is_same<T, TArgs>...>::value;
 }
 
 template <typename...>
-_CCCL_NODISCARD _CCCL_HOST_DEVICE _CCCL_FORCEINLINE constexpr bool always_false()
+_CCCL_NODISCARD _CCCL_HOST_DEVICE constexpr bool always_false()
 {
   return false;
 }
