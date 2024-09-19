@@ -153,10 +153,10 @@ _CCCL_NODISCARD _CCCL_DEVICE constexpr bool enable_generic_simd_reduction()
   using Length = ::cuda::std::integral_constant<int, cub::detail::static_size<Input>()>;
   // clang-format off
   return ((is_one_of<T, ::cuda::std::int16_t, ::cuda::std::uint16_t>() && is_one_of<ReductionOp, cub::Min, cub::Max>())
-#  if defined(_CCCL_HAS_NVFP16) && !defined(__CUDA_NO_HALF2_OPERATORS__)
+#  if defined(_CCCL_HAS_NVFP16)
      || (::cuda::std::is_same<T, __half>::value && is_one_of<ReductionOp, cub::Min, cub::Max, cub::Sum, cub::Mul>())
 #  endif
-#  if defined(_CCCL_HAS_NVBF16) && !defined(__CUDA_NO_BFLOAT162_OPERATORS__)
+#  if defined(_CCCL_HAS_NVBF16)
      || (::cuda::std::is_same<T, __nv_bfloat16>::value &&
          is_one_of<ReductionOp, cub::Min, cub::Max, cub::Sum, cub::Mul>())
 #  endif
@@ -178,14 +178,15 @@ _CCCL_NODISCARD _CCCL_DEVICE constexpr bool enable_sm80_simd_reduction()
 {
   using cub::detail::is_one_of;
   using ::cuda::std::is_same;
-#  if defined(_CCCL_HAS_NVFP16) && defined(_CCCL_HAS_NVBF16) && !defined(__CUDA_NO_HALF2_OPERATORS__) \
-    && !defined(__CUDA_NO_BFLOAT162_OPERATORS__)
-  return ((is_same<T, __nv_bfloat16>::value && is_one_of<ReductionOp, cub::Sum, cub::Mul>())
-          || (is_one_of<T, __half, __nv_bfloat16>() && is_one_of<ReductionOp, cub::Min, cub::Max>()))
-      && Length >= 4;
+  return
+#  if defined(_CCCL_HAS_NVFP16)
+    is_same<T, __half>::value
+#  elif defined(_CCCL_HAS_NVBF16)
+    is_same<T, __nv_bfloat16>::value
 #  else
-  return false;
+    false
 #  endif
+    && Length >= 4;
 }
 
 template <typename T, typename ReductionOp, int Length>
@@ -193,7 +194,7 @@ _CCCL_NODISCARD _CCCL_DEVICE constexpr bool enable_sm70_simd_reduction()
 {
   using cub::detail::is_one_of;
   using ::cuda::std::is_same;
-#  if defined(_CCCL_HAS_NVFP16) && !defined(__CUDA_NO_HALF2_OPERATORS__)
+#  if defined(_CCCL_HAS_NVFP16)
   return is_same<T, __half>::value && is_one_of<ReductionOp, cub::Sum, cub::Mul>() && Length >= 4;
 #  else
   return false;
@@ -249,10 +250,10 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE _CCCL_CONSTEXPR_CXX14 bool enable
     NV_DISPATCH_TARGET(
       NV_PROVIDES_SM_90,
         (return is_one_of<T, ::cuda::std::int32_t, ::cuda::std::uint32_t, ::cuda::std::int64_t, ::cuda::std::uint64_t
-#if defined(_CCCL_HAS_NVFP16) && !defined(__CUDA_NO_HALF2_OPERATORS__)
+#if defined(_CCCL_HAS_NVFP16)
                           , __half2
 #endif
-#if defined(_CCCL_HAS_NVBF16) && !defined(__CUDA_NO_BFLOAT162_OPERATORS__)
+#if defined(_CCCL_HAS_NVBF16)
                           , __nv_bfloat162
 #endif
                          >() &&

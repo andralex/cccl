@@ -506,7 +506,7 @@ struct SimdMin<::cuda::std::uint16_t>
   }
 };
 
-#if defined(_CCCL_HAS_NVFP16) && !defined(__CUDA_NO_HALF2_OPERATORS__)
+#if defined(_CCCL_HAS_NVFP16)
 
 template <>
 struct SimdMin<__half> : cub::Min
@@ -515,21 +515,17 @@ struct SimdMin<__half> : cub::Min
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __half2 operator()(__half2 a, __half2 b) const
   {
-    return cub::Min{}(a, b);
+    NV_IF_TARGET(NV_PROVIDES_SM_53,
+                 (return __hmin2(a, b);),
+                 (return __half2{static_cast<__half>(cub::Min{}(static_cast<float>(a.x), static_cast<float>(b.x))),
+                                 static_cast<__half>(cub::Min{}(static_cast<float>(a.y), static_cast<float>(b.y)))};));
   }
 };
 
-#elif defined(_CCCL_HAS_NVFP16) && defined(__CUDA_NO_HALF2_OPERATORS__)
+#endif // defined(_CCCL_HAS_NVFP16)
 
-template <>
-struct SimdMin<__half> : cub::Min
-{
-  using simd_type = __half;
-};
+#if defined(_CCCL_HAS_NVBF16)
 
-#endif // defined(_CCCL_HAS_NVFP16) && !defined(__CUDA_NO_HALF2_OPERATORS__)
-
-#if defined(_CCCL_HAS_NVBF16) && !defined(__CUDA_NO_BFLOAT162_OPERATORS__)
 template <>
 struct SimdMin<__nv_bfloat16>
 {
@@ -537,19 +533,15 @@ struct SimdMin<__nv_bfloat16>
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 operator()(__nv_bfloat162 a, __nv_bfloat162 b) const
   {
-    return cub::Min{}(a, b);
+    NV_IF_TARGET(NV_PROVIDES_SM_80,
+                 (return __hmin2(a, b);),
+                 (return __nv_bfloat162{
+                   static_cast<__nv_bfloat16>(cub::Min{}(static_cast<float>(a.x), static_cast<float>(b.x))),
+                   static_cast<__nv_bfloat16>(cub::Min{}(static_cast<float>(a.y), static_cast<float>(b.y)))};));
   }
 };
 
-#elif defined(_CCCL_HAS_NVBF16) && defined(__CUDA_NO_BFLOAT162_OPERATORS__)
-
-template <>
-struct SimdMin<__nv_bfloat16> : cub::Min
-{
-  using simd_type = __nv_bfloat16;
-};
-
-#endif // defined(_CCCL_HAS_NVBF16) && !defined(__CUDA_NO_BFLOAT162_OPERATORS__)
+#endif // defined(_CCCL_HAS_NVBF16)
 
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -581,7 +573,7 @@ struct SimdMax<::cuda::std::uint16_t>
   }
 };
 
-#if defined(_CCCL_HAS_NVFP16) && !defined(__CUDA_NO_HALF2_OPERATORS__)
+#if defined(_CCCL_HAS_NVFP16)
 
 template <>
 struct SimdMax<__half>
@@ -590,21 +582,16 @@ struct SimdMax<__half>
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __half2 operator()(__half2 a, __half2 b) const
   {
-    return cub::Max{}(a, b);
+    NV_IF_TARGET(NV_PROVIDES_SM_53,
+                 (return __hmax2(a, b);),
+                 (return __half2{static_cast<__half>(cub::Max{}(static_cast<float>(a.x), static_cast<float>(b.x))),
+                                 static_cast<__half>(cub::Max{}(static_cast<float>(a.y), static_cast<float>(b.y)))};));
   }
 };
 
-#elif defined(_CCCL_HAS_NVFP16) && defined(__CUDA_NO_HALF2_OPERATORS__)
+#endif // defined(_CCCL_HAS_NVFP16)
 
-template <>
-struct SimdMax<__half> : cub::Max
-{
-  using simd_type = __half;
-};
-
-#endif // defined(_CCCL_HAS_NVFP16) && !defined(__CUDA_NO_HALF2_OPERATORS__)
-
-#if defined(_CCCL_HAS_NVBF16) && !defined(__CUDA_NO_BFLOAT162_OPERATORS__)
+#if defined(_CCCL_HAS_NVBF16)
 
 template <>
 struct SimdMax<__nv_bfloat16>
@@ -613,19 +600,15 @@ struct SimdMax<__nv_bfloat16>
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 operator()(__nv_bfloat162 a, __nv_bfloat162 b) const
   {
-    return cub::Max{}(a, b);
+    NV_IF_TARGET(NV_PROVIDES_SM_80,
+                 (return __hmax2(a, b);),
+                 (return __nv_bfloat162{
+                   static_cast<__nv_bfloat16>(cub::Max{}(static_cast<float>(a.x), static_cast<float>(b.x))),
+                   static_cast<__nv_bfloat16>(cub::Max{}(static_cast<float>(a.y), static_cast<float>(b.y)))};));
   }
 };
 
-#elif defined(_CCCL_HAS_NVBF16) && defined(__CUDA_NO_BFLOAT162_OPERATORS__)
-
-template <>
-struct SimdMax<__nv_bfloat16> : cub::Max
-{
-  using simd_type = __nv_bfloat16;
-};
-
-#endif // defined(_CCCL_HAS_NVBF16) && !defined(__CUDA_NO_BFLOAT162_OPERATORS__)
+#endif // defined(_CCCL_HAS_NVBF16)
 
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -635,29 +618,7 @@ struct SimdSum
   static_assert(cub::detail::always_false<T>(), "Unsupported specialization");
 };
 
-// template <>
-// struct SimdSum<::cuda::std::int16_t>
-//{
-//   using simd_type = unsigned;
-//
-//   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE unsigned operator()(unsigned a, unsigned b) const
-//   {
-//     return __vadd2(a, b);
-//   }
-// };
-//
-// template <>
-// struct SimdSum<::cuda::std::uint16_t>
-//{
-//   using simd_type = unsigned;
-//
-//   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE unsigned operator()(unsigned a, unsigned b) const
-//   {
-//     return __vadd2(a, b);
-//   }
-// };
-
-#if defined(_CCCL_HAS_NVFP16) && !defined(__CUDA_NO_HALF2_OPERATORS__)
+#if defined(_CCCL_HAS_NVFP16)
 
 template <>
 struct SimdSum<__half>
@@ -666,21 +627,16 @@ struct SimdSum<__half>
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __half2 operator()(__half2 a, __half2 b) const
   {
-    return cub::Sum{}(a, b);
+    NV_IF_TARGET(NV_PROVIDES_SM_53,
+                 (return __hadd2(a, b);),
+                 (return __half2{static_cast<__half>(static_cast<float>(a.x) + static_cast<float>(b.x)),
+                                 static_cast<__half>(static_cast<float>(a.y) + static_cast<float>(b.y))};));
   }
 };
 
-#elif defined(_CCCL_HAS_NVFP16) && defined(__CUDA_NO_HALF2_OPERATORS__)
+#endif // defined(_CCCL_HAS_NVFP16)
 
-template <>
-struct SimdSum<__half> : cub::Sum
-{
-  using simd_type = __half;
-};
-
-#endif // defined(_CCCL_HAS_NVFP16) && !defined(__CUDA_NO_HALF2_OPERATORS__)
-
-#if defined(_CCCL_HAS_NVBF16) && !defined(__CUDA_NO_BFLOAT162_OPERATORS__)
+#if defined(_CCCL_HAS_NVBF16)
 
 template <>
 struct SimdSum<__nv_bfloat16>
@@ -689,19 +645,15 @@ struct SimdSum<__nv_bfloat16>
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 operator()(__nv_bfloat162 a, __nv_bfloat162 b) const
   {
-    return cub::Sum{}(a, b);
+    NV_IF_TARGET(
+      NV_PROVIDES_SM_80,
+      (return __hadd2(a, b);),
+      (return __nv_bfloat162{static_cast<__nv_bfloat16>(static_cast<float>(a.x) + static_cast<float>(b.x)),
+                             static_cast<__nv_bfloat16>(static_cast<float>(a.y) + static_cast<float>(b.y))};));
   }
 };
 
-#elif defined(_CCCL_HAS_NVBF16) && defined(__CUDA_NO_BFLOAT162_OPERATORS__)
-
-template <>
-struct SimdSum<__nv_bfloat16> : cub::Sum
-{
-  using simd_type = __nv_bfloat16;
-};
-
-#endif // defined(_CCCL_HAS_NVBF16) && !defined(__CUDA_NO_BFLOAT162_OPERATORS__)
+#endif // defined(_CCCL_HAS_NVBF16)
 
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -711,7 +663,7 @@ struct SimdMul
   static_assert(cub::detail::always_false<T>(), "Unsupported specialization");
 };
 
-#if defined(_CCCL_HAS_NVFP16) && !defined(__CUDA_NO_HALF2_OPERATORS__)
+#if defined(_CCCL_HAS_NVFP16)
 
 template <>
 struct SimdMul<__half>
@@ -720,21 +672,16 @@ struct SimdMul<__half>
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __half2 operator()(__half2 a, __half2 b) const
   {
-    return cub::Sum{}(a, b);
+    NV_IF_TARGET(NV_PROVIDES_SM_53,
+                 (return __hmul2(a, b);),
+                 (return __half2{static_cast<__half>(static_cast<float>(a.x) * static_cast<float>(b.x)),
+                                 static_cast<__half>(static_cast<float>(a.y) * static_cast<float>(b.y))};));
   }
 };
 
-#elif defined(_CCCL_HAS_NVFP16) && defined(__CUDA_NO_HALF2_OPERATORS__)
+#endif // defined(_CCCL_HAS_NVFP16)
 
-template <>
-struct SimdMul<__half> : cub::Mul
-{
-  using simd_type = __half;
-};
-
-#endif // defined(_CCCL_HAS_NVFP16) && !defined(__CUDA_NO_HALF2_OPERATORS__)
-
-#if defined(_CCCL_HAS_NVBF16) && !defined(__CUDA_NO_BFLOAT162_OPERATORS__)
+#if defined(_CCCL_HAS_NVBF16)
 
 template <>
 struct SimdMul<__nv_bfloat16>
@@ -743,19 +690,15 @@ struct SimdMul<__nv_bfloat16>
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 operator()(__nv_bfloat162 a, __nv_bfloat162 b) const
   {
-    return cub::Mul{}(a, b);
+    NV_IF_TARGET(
+      NV_PROVIDES_SM_80,
+      (return __hmul2(a, b);),
+      (return __nv_bfloat162{static_cast<__nv_bfloat16>(static_cast<float>(a.x) * static_cast<float>(b.x)),
+                             static_cast<__nv_bfloat16>(static_cast<float>(a.y) * static_cast<float>(b.y))};));
   }
 };
 
-#elif defined(_CCCL_HAS_NVBF16) && defined(__CUDA_NO_BFLOAT162_OPERATORS__)
-
-template <>
-struct SimdMul<__nv_bfloat16> : cub::Mul
-{
-  using simd_type = __nv_bfloat16;
-};
-
-#endif // defined(_CCCL_HAS_NVBF16) && !defined(__CUDA_NO_BFLOAT162_OPERATORS__)
+#endif // defined(_CCCL_HAS_NVBF16)
 
 //----------------------------------------------------------------------------------------------------------------------
 
