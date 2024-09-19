@@ -38,7 +38,7 @@
 #endif // no system header
 
 #include <cub/detail/type_traits.cuh> // static_size
-#include <cub/util_namespace.cuh> // CUB_NAMESPACE_BEGIN
+#include <cub/util_namespace.cuh>
 
 #include <cuda/std/array> // array
 #include <cuda/std/cstddef> // size_t
