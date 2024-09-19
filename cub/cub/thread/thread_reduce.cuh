@@ -47,7 +47,7 @@
 #include <cub/detail/type_traits.cuh> // are_same()
 #include <cub/thread/thread_load.cuh> // UnrolledCopy
 #include <cub/thread/thread_operators.cuh> // cub_operator_to_dpx_t
-#include <cub/util_namespace.cuh> // CUB_NAMESPACE_BEGIN
+#include <cub/util_namespace.cuh>
 
 #include <cuda/std/array> // array
 #include <cuda/std/bit> // bit_cast
@@ -152,15 +152,15 @@ _CCCL_NODISCARD _CCCL_DEVICE constexpr bool enable_generic_simd_reduction()
   using T      = ::cuda::std::__remove_cvref_t<decltype(::cuda::std::declval<Input>()[0])>;
   using Length = ::cuda::std::integral_constant<int, cub::detail::static_size<Input>()>;
   // clang-format off
-  return is_one_of<T, ::cuda::std::int16_t, ::cuda::std::uint16_t
-#  if _CCCL_HAS_NVFP16
-                   , __half
+  return ((is_one_of<T, ::cuda::std::int16_t, ::cuda::std::uint16_t>() && is_one_of<ReductionOp, cub::Min, cub::Max>())
+#  if defined(_CCCL_HAS_NVFP16) && !defined(__CUDA_NO_HALF2_OPERATORS__)
+     || (::cuda::std::is_same<T, __half>::value && is_one_of<ReductionOp, cub::Min, cub::Max, cub::Sum, cub::Mul>())
 #  endif
-#  if _CCCL_HAS_NVBF16
-                   , __nv_bfloat16
+#  if defined(_CCCL_HAS_NVBF16) && !defined(__CUDA_NO_BFLOAT162_OPERATORS__)
+     || (::cuda::std::is_same<T, __nv_bfloat16>::value &&
+         is_one_of<ReductionOp, cub::Min, cub::Max, cub::Sum, cub::Mul>())
 #  endif
-                   >()
-        && is_one_of<ReductionOp, cub::Min, cub::Max, cub::Sum, cub::Mul>() && Length{} >= 4;
+   ) && Length{} >= 4;
   // clang-format on
 }
 
@@ -178,7 +178,8 @@ _CCCL_NODISCARD _CCCL_DEVICE constexpr bool enable_sm80_simd_reduction()
 {
   using cub::detail::is_one_of;
   using ::cuda::std::is_same;
-#  if _CCCL_HAS_NVFP16 && _CCCL_HAS_NVBF16
+#  if defined(_CCCL_HAS_NVFP16) && defined(_CCCL_HAS_NVBF16) && !defined(__CUDA_NO_HALF2_OPERATORS__) \
+    && !defined(__CUDA_NO_BFLOAT162_OPERATORS__)
   return ((is_same<T, __nv_bfloat16>::value && is_one_of<ReductionOp, cub::Sum, cub::Mul>())
           || (is_one_of<T, __half, __nv_bfloat16>() && is_one_of<ReductionOp, cub::Min, cub::Max>()))
       && Length >= 4;
@@ -192,7 +193,7 @@ _CCCL_NODISCARD _CCCL_DEVICE constexpr bool enable_sm70_simd_reduction()
 {
   using cub::detail::is_one_of;
   using ::cuda::std::is_same;
-#  if _CCCL_HAS_NVFP16
+#  if defined(_CCCL_HAS_NVFP16) && !defined(__CUDA_NO_HALF2_OPERATORS__)
   return is_same<T, __half>::value && is_one_of<ReductionOp, cub::Sum, cub::Mul>() && Length >= 4;
 #  else
   return false;
@@ -247,8 +248,14 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE _CCCL_CONSTEXPR_CXX14 bool enable
     // clang-format off
     NV_DISPATCH_TARGET(
       NV_PROVIDES_SM_90,
-        (return is_one_of<T, ::cuda::std::int32_t, ::cuda::std::uint32_t, ::cuda::std::int64_t, ::cuda::std::uint64_t,
-                          __half2, __nv_bfloat162>() &&
+        (return is_one_of<T, ::cuda::std::int32_t, ::cuda::std::uint32_t, ::cuda::std::int64_t, ::cuda::std::uint64_t
+#if defined(_CCCL_HAS_NVFP16) && !defined(__CUDA_NO_HALF2_OPERATORS__)
+                          , __half2
+#endif
+#if defined(_CCCL_HAS_NVBF16) && !defined(__CUDA_NO_BFLOAT162_OPERATORS__)
+                          , __nv_bfloat162
+#endif
+                         >() &&
                 is_one_of<ReductionOp, cub::Min, cub::Max>();),
       NV_PROVIDES_SM_70,
         (return is_one_of<T, ::cuda::std::int32_t, ::cuda::std::uint32_t, ::cuda::std::int64_t, ::cuda::std::uint64_t>()
