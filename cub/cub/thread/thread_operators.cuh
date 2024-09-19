@@ -479,19 +479,15 @@ namespace internal
 {
 
 template <typename T>
-struct SimdMin : cub::Min
+struct SimdMin
 {
-  using simd_type = T;
-
-  static constexpr auto ratio = 1;
+  static_assert(cub::detail::always_false<T>(), "Unsupported specialization");
 };
 
 template <>
 struct SimdMin<::cuda::std::int16_t>
 {
   using simd_type = unsigned;
-
-  static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE unsigned operator()(unsigned a, unsigned b) const
   {
@@ -503,8 +499,6 @@ template <>
 struct SimdMin<::cuda::std::uint16_t>
 {
   using simd_type = unsigned;
-
-  static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE unsigned operator()(unsigned a, unsigned b) const
   {
@@ -518,8 +512,6 @@ template <>
 struct SimdMin<__half> : cub::Min
 {
   using simd_type = __half2;
-
-  static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __half2 operator()(__half2 a, __half2 b) const
   {
@@ -536,8 +528,6 @@ struct SimdMin<__nv_bfloat16>
 {
   using simd_type = __nv_bfloat162;
 
-  static constexpr auto ratio = 2;
-
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 operator()(__nv_bfloat162 a, __nv_bfloat162 b) const
   {
     return cub::Min{}(a, b);
@@ -549,19 +539,15 @@ struct SimdMin<__nv_bfloat16>
 //----------------------------------------------------------------------------------------------------------------------
 
 template <typename T>
-struct SimdMax : cub::Max
+struct SimdMax
 {
-  using simd_type = T;
-
-  static constexpr auto ratio = 1;
+  static_assert(cub::detail::always_false<T>(), "Unsupported specialization");
 };
 
 template <>
 struct SimdMax<::cuda::std::int16_t>
 {
   using simd_type = unsigned;
-
-  static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE unsigned operator()(unsigned a, unsigned b) const
   {
@@ -573,8 +559,6 @@ template <>
 struct SimdMax<::cuda::std::uint16_t>
 {
   using simd_type = unsigned;
-
-  static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE unsigned operator()(unsigned a, unsigned b) const
   {
@@ -588,8 +572,6 @@ template <>
 struct SimdMax<__half>
 {
   using simd_type = __half2;
-
-  static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __half2 operator()(__half2 a, __half2 b) const
   {
@@ -617,19 +599,15 @@ struct SimdMax<__nv_bfloat16>
 //----------------------------------------------------------------------------------------------------------------------
 
 template <typename T>
-struct SimdSum : cub::Sum
+struct SimdSum
 {
-  using simd_type = T;
-
-  static constexpr auto ratio = 1;
+  static_assert(cub::detail::always_false<T>(), "Unsupported specialization");
 };
 
 template <>
 struct SimdSum<::cuda::std::int16_t>
 {
   using simd_type = unsigned;
-
-  static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE unsigned operator()(unsigned a, unsigned b) const
   {
@@ -641,8 +619,6 @@ template <>
 struct SimdSum<::cuda::std::uint16_t>
 {
   using simd_type = unsigned;
-
-  static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE unsigned operator()(unsigned a, unsigned b) const
   {
@@ -656,8 +632,6 @@ template <>
 struct SimdSum<__half>
 {
   using simd_type = __half2;
-
-  static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __half2 operator()(__half2 a, __half2 b) const
   {
@@ -674,8 +648,6 @@ struct SimdSum<__nv_bfloat16>
 {
   using simd_type = __nv_bfloat162;
 
-  static constexpr auto ratio = 2;
-
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 operator()(__nv_bfloat162 a, __nv_bfloat162 b) const
   {
     return cub::Sum{}(a, b);
@@ -687,11 +659,9 @@ struct SimdSum<__nv_bfloat16>
 //----------------------------------------------------------------------------------------------------------------------
 
 template <typename T>
-struct SimdMul : cub::Mul
+struct SimdMul
 {
-  using simd_type = T;
-
-  static constexpr auto ratio = 1;
+  static_assert(cub::detail::always_false<T>(), "Unsupported specialization");
 };
 
 #if defined(_CCCL_HAS_NVFP16)
@@ -700,8 +670,6 @@ template <>
 struct SimdMul<__half>
 {
   using simd_type = __half2;
-
-  static constexpr auto ratio = 2;
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __half2 operator()(__half2 a, __half2 b) const
   {
@@ -718,8 +686,6 @@ struct SimdMul<__nv_bfloat16>
 {
   using simd_type = __nv_bfloat162;
 
-  static constexpr auto ratio = 2;
-
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 operator()(__nv_bfloat162 a, __nv_bfloat162 b) const
   {
     return cub::Mul{}(a, b);
@@ -733,8 +699,7 @@ struct SimdMul<__nv_bfloat16>
 template <typename ReduceOp, typename T>
 struct CubOperatorToSimdOperator
 {
-  using type      = ReduceOp;
-  using simd_type = T;
+  static_assert(cub::detail::always_false<T>(), "Unsupported specialization");
 };
 
 template <typename T>

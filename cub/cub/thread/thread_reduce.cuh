@@ -146,8 +146,27 @@ namespace internal
 
 // TODO: add Blackwell support
 
+template <typename Input, typename ReductionOp>
+_CCCL_NODISCARD _CCCL_DEVICE constexpr bool enable_generic_simd_reduction()
+{
+  using cub::detail::is_one_of;
+  using T      = ::cuda::std::__remove_cvref_t<decltype(::cuda::std::declval<Input>()[0])>;
+  using Length = ::cuda::std::integral_constant<int, cub::detail::static_size<Input>()>;
+  // clang-format off
+  return is_one_of<T, ::cuda::std::int16_t, ::cuda::std::uint16_t
+#  if _CCCL_HAS_NVFP16
+                   , __half
+#  endif
+#  if _CCCL_HAS_NVBF16
+                   , __nv_bfloat16
+#  endif
+                   >()
+        && is_one_of<ReductionOp, cub::Min, cub::Max, cub::Sum, cub::Mul>() && Length{} >= 4;
+  // clang-format on
+}
+
 template <typename T, typename ReductionOp, int Length>
-_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE constexpr bool enable_sm90_simd_reduction()
+_CCCL_NODISCARD _CCCL_DEVICE constexpr bool enable_sm90_simd_reduction()
 {
   using cub::detail::is_one_of;
   // cub::Sum not handled: IADD3 always produces less instructions than VIADD2
@@ -156,7 +175,7 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE constexpr bool enable_sm90_simd_r
 }
 
 template <typename T, typename ReductionOp, int Length>
-_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE constexpr bool enable_sm80_simd_reduction()
+_CCCL_NODISCARD _CCCL_DEVICE constexpr bool enable_sm80_simd_reduction()
 {
   using cub::detail::is_one_of;
   using ::cuda::std::is_same;
@@ -170,7 +189,7 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE constexpr bool enable_sm80_simd_r
 }
 
 template <typename T, typename ReductionOp, int Length>
-_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE constexpr bool enable_sm70_simd_reduction()
+_CCCL_NODISCARD _CCCL_DEVICE constexpr bool enable_sm70_simd_reduction()
 {
   using cub::detail::is_one_of;
   using ::cuda::std::is_same;
@@ -243,7 +262,7 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE _CCCL_CONSTEXPR_CXX14 bool enable
 }
 
 template <typename Input, typename ReductionOp, typename AccumT>
-_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE constexpr bool enable_promotion()
+_CCCL_NODISCARD _CCCL_DEVICE constexpr bool enable_promotion()
 {
   using cub::detail::is_one_of;
   using ::cuda::std::is_same;
@@ -310,30 +329,20 @@ ThreadReduceTernaryTree(const Input& input, ReductionOp reduction_op)
  * SIMD Reduction
  **********************************************************************************************************************/
 
-template <typename ReductionOp,
-          typename SimdReduceOp,
-          _CUB_TEMPLATE_REQUIRES(::cuda::std::is_same<ReductionOp, SimdReduceOp>::value)>
-_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE ReductionOp GetSimdReduceOp(ReductionOp reduction_op)
-{
-  return reduction_op;
-}
-
-template <typename ReductionOp,
-          typename SimdReduceOp,
-          _CUB_TEMPLATE_REQUIRES(!::cuda::std::is_same<ReductionOp, SimdReduceOp>::value)>
-_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE SimdReduceOp GetSimdReduceOp(ReductionOp)
-{
-  return SimdReduceOp{};
-}
-
-template <typename Input, typename ReductionOp, _CUB_TEMPLATE_REQUIRES(cub::detail::static_size<Input>() == 1)>
+// never reached. Protect instantion of ThreadReduceSimd with arbitrary types and operators
+template <typename Input,
+          typename ReductionOp,
+          _CUB_TEMPLATE_REQUIRES(!cub::internal::enable_generic_simd_reduction<Input, ReductionOp>())>
 _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE auto
 ThreadReduceSimd(const Input& input, ReductionOp) -> ::cuda::std::__remove_cvref_t<decltype(input[0])>
 {
+  assert(false);
   return input[0];
 }
 
-template <typename Input, typename ReductionOp, _CUB_TEMPLATE_REQUIRES(cub::detail::static_size<Input>() > 1)>
+template <typename Input,
+          typename ReductionOp,
+          _CUB_TEMPLATE_REQUIRES(cub::internal::enable_generic_simd_reduction<Input, ReductionOp>())>
 _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE auto
 ThreadReduceSimd(const Input& input, ReductionOp reduction_op) -> ::cuda::std::__remove_cvref_t<decltype(input[0])>
 {
@@ -347,11 +356,10 @@ ThreadReduceSimd(const Input& input, ReductionOp reduction_op) -> ::cuda::std::_
   using UnpackedType            = ::cuda::std::array<T, simd_ratio>;
   using SimdArray               = ::cuda::std::array<SimdType, length / simd_ratio>;
   static_assert(simd_ratio == 1 || simd_ratio == 2, "Only SIMD size <= 2 is supported");
-  auto simd_reduce_op = GetSimdReduceOp<ReductionOp, SimdReduceOp>(reduction_op);
   T local_array[length_rounded];
   UnrolledCopy<length_rounded>(input, local_array);
   auto simd_input         = unsafe_bitcast<SimdArray>(local_array);
-  SimdType simd_reduction = ThreadReduce(simd_input, simd_reduce_op);
+  SimdType simd_reduction = cub::ThreadReduce(simd_input, SimdReduceOp{});
   auto unpacked_values    = unsafe_bitcast<UnpackedType>(simd_reduction);
   if _CCCL_CONSTEXPR_CXX17 (simd_ratio == 1)
   {

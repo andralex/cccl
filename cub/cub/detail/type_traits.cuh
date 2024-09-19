@@ -138,7 +138,7 @@ using has_size_t = typename has_size<T>::type;
 template <typename T, typename = void>
 struct StaticSize
 {
-  static_assert(detail::always_false<T>(), "StaticSize not supported for this type");
+  static_assert(cub::detail::always_false<T>(), "StaticSize not supported for this type");
 };
 
 template <typename T>
