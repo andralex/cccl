@@ -515,7 +515,7 @@ struct SimdMin<__half> : cub::Min
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __half2 operator()(__half2 a, __half2 b) const
   {
-    NV_IF_TARGET(NV_PROVIDES_SM_53,
+    NV_IF_TARGET(NV_PROVIDES_SM_80,
                  (return __hmin2(a, b);),
                  (return __half2{static_cast<__half>(cub::Min{}(static_cast<float>(a.x), static_cast<float>(b.x))),
                                  static_cast<__half>(cub::Min{}(static_cast<float>(a.y), static_cast<float>(b.y)))};));
@@ -582,7 +582,7 @@ struct SimdMax<__half>
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __half2 operator()(__half2 a, __half2 b) const
   {
-    NV_IF_TARGET(NV_PROVIDES_SM_53,
+    NV_IF_TARGET(NV_PROVIDES_SM_80,
                  (return __hmax2(a, b);),
                  (return __half2{static_cast<__half>(cub::Max{}(static_cast<float>(a.x), static_cast<float>(b.x))),
                                  static_cast<__half>(cub::Max{}(static_cast<float>(a.y), static_cast<float>(b.y)))};));

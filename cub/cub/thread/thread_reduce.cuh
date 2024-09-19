@@ -265,6 +265,7 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE _CCCL_CONSTEXPR_CXX14 bool enable
         (return false;)
     );
     // clang-format on
+    return false;
   }
 }
 
@@ -409,11 +410,11 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE AccumT ThreadReduce(const Input& 
   using cub::internal::enable_simd_reduction;
   using cub::internal::enable_ternary_reduction;
   using PromT = ::cuda::std::_If<enable_promotion<Input, ReductionOp, AccumT>(), int, AccumT>;
-  if _CCCL_CONSTEXPR_CXX17 (enable_simd_reduction<Input, ReductionOp, AccumT>())
+  if (enable_simd_reduction<Input, ReductionOp, AccumT>())
   {
     return cub::internal::ThreadReduceSimd(input, reduction_op);
   }
-  else if _CCCL_CONSTEXPR_CXX17 (enable_ternary_reduction<Input, ReductionOp, PromT>())
+  else if (enable_ternary_reduction<Input, ReductionOp, PromT>())
   {
     return cub::internal::ThreadReduceTernaryTree<PromT>(input, reduction_op);
   }
