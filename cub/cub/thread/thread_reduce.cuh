@@ -26,10 +26,8 @@
  *
  ******************************************************************************/
 
-/**
- * @file
- * Thread reduction over statically-sized array-like types
- */
+//! @file
+//! Thread reduction over statically-sized array-like types
 
 #pragma once
 
@@ -56,6 +54,93 @@
 
 CUB_NAMESPACE_BEGIN
 
+//! @name ThreadReduce
+//! @{
+
+//! @rst
+//! The ``ThreadReduce`` function provides :ref:`collective <collective-primitives>` methods for computing a reduction
+//! of items assigned to a single CUDA thread.
+//!
+//! Overview
+//! ++++++++++++++++++++++++++
+//!
+//! - A `reduction <http://en.wikipedia.org/wiki/Reduce_(higher-order_function)>`__ (or *fold*)
+//!   uses a binary combining operator to compute a single aggregate from a list of input elements.
+//! - Supports array-like types that are statically-sized and can be indexed with the `[]` operator,
+//!   e.g., raw arrays, ``std::array``, ``std::span``, etc.
+//!
+//! Performance Considerations
+//! ++++++++++++++++++++++++++
+//!
+//! The function provides the following optimizations
+//!
+//! - Vectorization for
+//!
+//!   * Sum (``cub::Sum``) and Multiplication (``cub::Mul``) on SM70+ for ``__half`` data type
+//!   * Sum (``cub::Sum``) and Multiplication (``cub::Mul``) on SM80+ for ``__nv_bfloat16`` data type
+//!   * Minimum (``cub::Min``) and Maximum (``cub::Max``) on SM80+ for ``__half` and ``__nv_bfloat16`` data types
+//!   * Minimum (``cub::Min``) and Maximum (``cub::Max``) on SM90+ for ``int16_t`` and ``uint16_t`` data types
+//!     (Hopper DPX instructions)
+//!
+//! - Instruction-Level Parallelism (ILP) by exploiting a ternary tree reduction for
+//!
+//!   * Sum (``cub::Sum``) on SM50+ for for integral data types
+//!   * Bitwise AND (``cub::BitAnd``), OR (``cub::BitOr``), XOR (``cub::BitXor``) on SM50+ for integer types
+//!   * Minimum (``cub::Min``) and Maximum (``cub::Max``) on SM90+ for integer types (Hopper DPX instructions),
+//!     ``__half`, and ``__nv_bfloat16`` data types
+//!   * Minimum (``cub::Min``) and Maximum (``cub::Max``) on SM90+ for integer types (Hopper DPX instructions)
+//!
+//! - Instruction-Level Parallelism (ILP) by exploiting a binary tree reduction for all other cases
+//!
+//! Simple Example
+//! ++++++++++++++++++++++++++
+//!
+//! The code snippet below illustrates a simple sum reductions over 4 integer values.
+//!
+//! .. code-block:: c++
+//!
+//!    #include <cub/cub.cuh>
+//!
+//!    __global__ void ExampleKernel(...)
+//!    {
+//!        int array[4] = {1, 2, 3, 4};
+//!        int sum      = cub::ThreadReduce(array, cub::Sum()); // sum = 10
+//!
+//! @endrst
+//!
+//! @brief Reduction over statically-sized array-like types.
+//!
+//! @tparam Input
+//!   <b>[inferred]</b> The data type to be reduced having member
+//!   <tt>operator[](int i)</tt> and must be statically-sized (size() method or static array)
+//!
+//! @tparam ReductionOp
+//!   <b>[inferred]</b> Binary reduction operator type having member
+//!   <tt>T operator()(const T &a, const T &b)</tt>
+//!
+//! @param[in] input
+//!   Input array
+//!
+//! @param[in] reduction_op
+//!   Binary reduction operator
+//!
+//! @return Aggregate of type <tt>cuda::std::__accumulator_t<ReductionOp, ValueT, PrefixT></tt>
+//!
+template <typename Input,
+          typename ReductionOp,
+#ifndef DOXYGEN_SHOULD_SKIP_THIS // Do not document
+          typename ValueT = ::cuda::std::__remove_cvref_t<decltype(::cuda::std::declval<Input>()[0])>,
+#endif // !DOXYGEN_SHOULD_SKIP_THIS
+          typename AccumT = ::cuda::std::__accumulator_t<ReductionOp, ValueT>>
+_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE AccumT ThreadReduce(const Input& input, ReductionOp reduction_op);
+// forward declaration
+
+/***********************************************************************************************************************
+ * Internal Reduction Implementations
+ **********************************************************************************************************************/
+
+#ifndef DOXYGEN_SHOULD_SKIP_THIS // Do not document
+
 namespace detail
 {
 
@@ -71,43 +156,9 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE Output unsafe_bitcast(const Input
 
 } // namespace detail
 
-// forward declaration
-/**
- * @brief Reduction over statically-sized array-like types.
- *
- * @tparam Input
- *   <b>[inferred]</b> The data type to be reduced having member
- *   <tt>operator[](int i)</tt> and must be statically-sized (size() method or static array)
- *
- * @tparam ReductionOp
- *   <b>[inferred]</b> Binary reduction operator type having member
- *   <tt>T operator()(const T &a, const T &b)</tt>
- *
- * @param[in] input
- *   Input array
- *
- * @param[in] reduction_op
- *   Binary reduction operator
- *
- * @return Aggregate of type <tt>cuda::std::__accumulator_t<ReductionOp, ValueT, PrefixT></tt>
- */
-template <typename Input,
-          typename ReductionOp,
-#ifndef DOXYGEN_SHOULD_SKIP_THIS // Do not document
-          typename ValueT = ::cuda::std::__remove_cvref_t<decltype(::cuda::std::declval<Input>()[0])>,
-#endif // !DOXYGEN_SHOULD_SKIP_THIS
-          typename AccumT = ::cuda::std::__accumulator_t<ReductionOp, ValueT>>
-_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE AccumT ThreadReduce(const Input& input, ReductionOp reduction_op);
-
-/***********************************************************************************************************************
- * Internal Reduction Implementations
- **********************************************************************************************************************/
-
 /// Internal namespace (to prevent ADL mishaps between static functions when mixing different CUB installations)
 namespace internal
 {
-
-#ifndef DOXYGEN_SHOULD_SKIP_THIS // Do not document
 
 /***********************************************************************************************************************
  * Enable SIMD/Tree reduction heuristics
@@ -391,8 +442,6 @@ ThreadReduceSimd(const Input& input, ReductionOp reduction_op) -> ::cuda::std::_
   }
 }
 
-#endif // !DOXYGEN_SHOULD_SKIP_THIS
-
 } // namespace internal
 
 /***********************************************************************************************************************
@@ -424,31 +473,36 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE AccumT ThreadReduce(const Input& 
   }
 }
 
-/**
- * @brief Reduction over statically-sized array-like types, seeded with the specified @p prefix.
- *
- * @tparam Input
- *   <b>[inferred]</b> The data type to be reduced having member
- *   <tt>operator[](int i)</tt> and must be statically-sized (size() method or static array)
- *
- * @tparam ReductionOp
- *   <b>[inferred]</b> Binary reduction operator type having member
- *   <tt>T operator()(const T &a, const T &b)</tt>
- *
- * @tparam PrefixT
- *   <b>[inferred]</b> The prefix type
- *
- * @param[in] input
- *   Input array
- *
- * @param[in] reduction_op
- *   Binary reduction operator
- *
- * @param[in] prefix
- *   Prefix to seed reduction with
- *
- * @return Aggregate of type <tt>cuda::std::__accumulator_t<ReductionOp, ValueT, PrefixT></tt>
- */
+#endif // DOXYGEN_SHOULD_SKIP_THIS
+
+//! @rst
+//! AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+//! @endrst
+//!
+//! @brief Reduction over statically-sized array-like types, seeded with the specified @p prefix.
+//!
+//! @tparam Input
+//!   <b>[inferred]</b> The data type to be reduced having member
+//!   <tt>operator[](int i)</tt> and must be statically-sized (size() method or static array)
+//!
+//! @tparam ReductionOp
+//!   <b>[inferred]</b> Binary reduction operator type having member
+//!   <tt>T operator()(const T &a, const T &b)</tt>
+//!
+//! @tparam PrefixT
+//!   <b>[inferred]</b> The prefix type
+//!
+//! @param[in] input
+//!   Input array
+//!
+//! @param[in] reduction_op
+//!   Binary reduction operator
+//!
+//! @param[in] prefix
+//!   Prefix to seed reduction with
+//!
+//! @return Aggregate of type <tt>cuda::std::__accumulator_t<ReductionOp, ValueT, PrefixT></tt>
+//!
 template <typename Input,
           typename ReductionOp,
           typename PrefixT,
@@ -475,16 +529,16 @@ ThreadReduce(const Input& input, ReductionOp reduction_op, PrefixT prefix)
   return cub::ThreadReduce<decltype(array), ReductionOp, AccumT, AccumT>(array, reduction_op);
 }
 
+//! @}  end member group
+
 /***********************************************************************************************************************
  * Pointer Interfaces with explicit Length (internal use only)
- *********************************************************************************************************************
- */
+ **********************************************************************************************************************/
+#ifndef DOXYGEN_SHOULD_SKIP_THIS // Do not document
 
 /// Internal namespace (to prevent ADL mishaps between static functions when mixing different CUB installations)
 namespace internal
 {
-
-#ifndef DOXYGEN_SHOULD_SKIP_THIS // Do not document
 
 /**
  * @remark The pointer interface adds little value and requires Length to be explicit.
@@ -570,7 +624,8 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE T ThreadReduce(const T*, Reductio
   return prefix;
 }
 
+} // namespace internal
+
 #endif // !DOXYGEN_SHOULD_SKIP_THIS
 
-} // namespace internal
 CUB_NAMESPACE_END
