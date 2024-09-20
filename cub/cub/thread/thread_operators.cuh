@@ -163,7 +163,7 @@ struct BitAnd
 {
   /// Binary division operator, returns `t & u`
   template <typename T, typename U>
-  _CCCL_HOST_DEVICE _CCCL_FORCEINLINE auto
+  _CCCL_NODISCARD _CCCL_HOST_DEVICE _CCCL_FORCEINLINE auto
   operator()(T&& t, U&& u) const -> decltype(::cuda::std::forward<T>(t) & ::cuda::std::forward<U>(u))
   {
     return ::cuda::std::forward<T>(t) & ::cuda::std::forward<U>(u);
@@ -175,7 +175,7 @@ struct BitOr
 {
   /// Binary division operator, returns `t | u`
   template <typename T, typename U>
-  _CCCL_HOST_DEVICE _CCCL_FORCEINLINE auto
+  _CCCL_NODISCARD _CCCL_HOST_DEVICE _CCCL_FORCEINLINE auto
   operator()(T&& t, U&& u) const -> decltype(::cuda::std::forward<T>(t) | ::cuda::std::forward<U>(u))
   {
     return ::cuda::std::forward<T>(t) | ::cuda::std::forward<U>(u);
@@ -187,7 +187,7 @@ struct BitXor
 {
   /// Binary division operator, returns `t ^ u`
   template <typename T, typename U>
-  _CCCL_HOST_DEVICE _CCCL_FORCEINLINE auto
+  _CCCL_NODISCARD _CCCL_HOST_DEVICE _CCCL_FORCEINLINE auto
   operator()(T&& t, U&& u) const -> decltype(::cuda::std::forward<T>(t) ^ ::cuda::std::forward<U>(u))
   {
     return ::cuda::std::forward<T>(t) ^ ::cuda::std::forward<U>(u);
@@ -202,7 +202,7 @@ struct Max
   /// Boolean max operator, returns `(t > u) ? t : u`
   template <typename T, typename U>
   _CCCL_NODISCARD _CCCL_HOST_DEVICE _CCCL_FORCEINLINE _CCCL_CONSTEXPR_CXX14
-  typename ::cuda::std::common_type<T, U>::type
+  ::cuda::std::__common_type_t<T, U>
   operator()(T&& t, U&& u) const
   {
     return CUB_MAX(t, u);
@@ -239,7 +239,7 @@ struct Min
   /// Boolean min operator, returns `(t < u) ? t : u`
   template <typename T, typename U>
   _CCCL_NODISCARD _CCCL_HOST_DEVICE _CCCL_FORCEINLINE _CCCL_CONSTEXPR_CXX14
-  typename ::cuda::std::common_type<T, U>::type
+  ::cuda::std::__common_type_t<T, U>
   operator()(T&& t, U&& u) const
   {
     return CUB_MIN(t, u);
@@ -472,6 +472,8 @@ _CCCL_HOST_DEVICE BinaryFlip<BinaryOpT> MakeBinaryFlip(BinaryOpT binary_op)
 /***********************************************************************************************************************
  * SIMD Operators
  **********************************************************************************************************************/
+
+#ifndef DOXYGEN_SHOULD_SKIP_THIS // Do not document
 
 // TODO: extend to floating_point<M, E>
 
@@ -743,5 +745,7 @@ template <typename ReduceOp, typename T>
 using simd_type_t = typename CubOperatorToSimdOperator<ReduceOp, T>::simd_type;
 
 } // namespace internal
+
+#endif // !DOXYGEN_SHOULD_SKIP_THIS
 
 CUB_NAMESPACE_END
