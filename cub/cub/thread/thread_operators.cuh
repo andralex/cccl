@@ -517,8 +517,8 @@ struct SimdMin<__half>
   {
     NV_IF_TARGET(NV_PROVIDES_SM_80,
                  (return __hmin2(a, b);),
-                 (return __halves2half2{__float2half(cub::Min{}(__half2float(a.x), __half2float(b.x))),
-                                        __float2half(cub::Min{}(__half2float(a.y), __half2float(b.y)))};));
+                 (return __halves2half2(__float2half(cub::Min{}(__half2float(a.x), __half2float(b.x))),
+                                        __float2half(cub::Min{}(__half2float(a.y), __half2float(b.y))));));
   }
 };
 
@@ -533,11 +533,11 @@ struct SimdMin<__nv_bfloat16>
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 operator()(__nv_bfloat162 a, __nv_bfloat162 b) const
   {
-    NV_IF_TARGET(NV_PROVIDES_SM_80,
-                 (return __hmin2(a, b);),
-                 (return __nv_bfloat162{
-                   static_cast<__nv_bfloat16>(cub::Min{}(static_cast<float>(a.x), static_cast<float>(b.x))),
-                   static_cast<__nv_bfloat16>(cub::Min{}(static_cast<float>(a.y), static_cast<float>(b.y)))};));
+    NV_IF_TARGET(
+      NV_PROVIDES_SM_80,
+      (return __hmin2(a, b);),
+      (return __halves2bfloat162(__float2bfloat16(cub::Min{}(__bfloat162float(a.x), __bfloat162float(b.x))),
+                                 __float2bfloat16(cub::Min{}(__bfloat162float(a.y), __bfloat162float(b.y))));));
   }
 };
 
@@ -584,8 +584,8 @@ struct SimdMax<__half>
   {
     NV_IF_TARGET(NV_PROVIDES_SM_80,
                  (return __hmax2(a, b);),
-                 (return __half2{static_cast<__half>(cub::Max{}(static_cast<float>(a.x), static_cast<float>(b.x))),
-                                 static_cast<__half>(cub::Max{}(static_cast<float>(a.y), static_cast<float>(b.y)))};));
+                 (return __halves2half2(__float2half(cub::Max{}(__half2float(a.x), __half2float(b.x))),
+                                        __float2half(cub::Max{}(__half2float(a.y), __half2float(b.y))));));
   }
 };
 
@@ -600,11 +600,11 @@ struct SimdMax<__nv_bfloat16>
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 operator()(__nv_bfloat162 a, __nv_bfloat162 b) const
   {
-    NV_IF_TARGET(NV_PROVIDES_SM_80,
-                 (return __hmax2(a, b);),
-                 (return __nv_bfloat162{
-                   static_cast<__nv_bfloat16>(cub::Max{}(static_cast<float>(a.x), static_cast<float>(b.x))),
-                   static_cast<__nv_bfloat16>(cub::Max{}(static_cast<float>(a.y), static_cast<float>(b.y)))};));
+    NV_IF_TARGET(
+      NV_PROVIDES_SM_80,
+      (return __hmax2(a, b);),
+      (return __halves2bfloat162(__float2bfloat16(cub::Max{}(__bfloat162float(a.x), __bfloat162float(b.x))),
+                                 __float2bfloat16(cub::Max{}(__bfloat162float(a.y), __bfloat162float(b.y))));));
   }
 };
 
@@ -629,8 +629,8 @@ struct SimdSum<__half>
   {
     NV_IF_TARGET(NV_PROVIDES_SM_53,
                  (return __hadd2(a, b);),
-                 (return __half2{static_cast<__half>(static_cast<float>(a.x) + static_cast<float>(b.x)),
-                                 static_cast<__half>(static_cast<float>(a.y) + static_cast<float>(b.y))};));
+                 (return __halves2half2(__float2half(__half2float(a.x) + __half2float(b.x)),
+                                        __float2half(__half2float(a.y) + __half2float(b.y)));));
   }
 };
 
@@ -645,11 +645,10 @@ struct SimdSum<__nv_bfloat16>
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 operator()(__nv_bfloat162 a, __nv_bfloat162 b) const
   {
-    NV_IF_TARGET(
-      NV_PROVIDES_SM_80,
-      (return __hadd2(a, b);),
-      (return __nv_bfloat162{static_cast<__nv_bfloat16>(static_cast<float>(a.x) + static_cast<float>(b.x)),
-                             static_cast<__nv_bfloat16>(static_cast<float>(a.y) + static_cast<float>(b.y))};));
+    NV_IF_TARGET(NV_PROVIDES_SM_80,
+                 (return __hadd2(a, b);),
+                 (return __halves2bfloat162(__float2bfloat16(__bfloat162float(a.x) + __bfloat162float(b.x)),
+                                            __float2bfloat16(__bfloat162float(a.y) + __bfloat162float(b.y)));));
   }
 };
 
@@ -674,8 +673,8 @@ struct SimdMul<__half>
   {
     NV_IF_TARGET(NV_PROVIDES_SM_53,
                  (return __hmul2(a, b);),
-                 (return __half2{static_cast<__half>(static_cast<float>(a.x) * static_cast<float>(b.x)),
-                                 static_cast<__half>(static_cast<float>(a.y) * static_cast<float>(b.y))};));
+                 (return __halves2half2(__float2half(__half2float(a.x) * __half2float(b.x)),
+                                        __float2half(__half2float(a.y) * __half2float(b.y)));));
   }
 };
 
@@ -690,11 +689,10 @@ struct SimdMul<__nv_bfloat16>
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 operator()(__nv_bfloat162 a, __nv_bfloat162 b) const
   {
-    NV_IF_TARGET(
-      NV_PROVIDES_SM_80,
-      (return __hmul2(a, b);),
-      (return __nv_bfloat162{static_cast<__nv_bfloat16>(static_cast<float>(a.x) * static_cast<float>(b.x)),
-                             static_cast<__nv_bfloat16>(static_cast<float>(a.y) * static_cast<float>(b.y))};));
+    NV_IF_TARGET(NV_PROVIDES_SM_80,
+                 (return __hmul2(a, b);),
+                 (return __halves2bfloat162(__float2bfloat16(__bfloat162float(a.x) * __bfloat162float(b.x)),
+                                            __float2bfloat16(__bfloat162float(a.y) * __bfloat162float(b.y)));));
   }
 };
 
