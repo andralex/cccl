@@ -517,8 +517,8 @@ struct SimdMin<__half> : cub::Min
   {
     NV_IF_TARGET(NV_PROVIDES_SM_80,
                  (return __hmin2(a, b);),
-                 (return __half2{static_cast<__half>(cub::Min{}(static_cast<float>(a.x), static_cast<float>(b.x))),
-                                 static_cast<__half>(cub::Min{}(static_cast<float>(a.y), static_cast<float>(b.y)))};));
+                 (return __halves2half2{__float2half(cub::Min{}(__half2float(a.x), __half2float(b.x))),
+                                        __float2half(cub::Min{}(__half2float(a.y), __half2float(b.y)))};));
   }
 };
 
