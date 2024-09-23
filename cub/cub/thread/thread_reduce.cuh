@@ -58,16 +58,30 @@ CUB_NAMESPACE_BEGIN
 //! @{
 
 //! @rst
-//! The ``ThreadReduce`` function provides :ref:`collective <collective-primitives>` methods for computing a reduction
-//! of items assigned to a single CUDA thread.
+//! The ``ThreadReduce`` function computes a reduction of items assigned to a single CUDA thread.
 //!
 //! Overview
 //! ++++++++++++++++++++++++++
 //!
 //! - A `reduction <http://en.wikipedia.org/wiki/Reduce_(higher-order_function)>`__ (or *fold*)
 //!   uses a binary combining operator to compute a single aggregate from a list of input elements.
-//! - Supports array-like types that are statically-sized and can be indexed with the `[]` operator,
-//!   e.g., raw arrays, ``std::array``, ``std::span``, etc.
+//! - Supports array-like types that are statically-sized and can be indexed with the ``[] operator``:
+//!   raw arrays, ``std::array``, ``std::span``, ``std::mdspan``
+//!
+//! Overloading
+//! ++++++++++++++++++++++++++
+//!
+//! Reduction over statically-sized array-like types, seeded with the specified prefix
+//!
+//! .. code-block:: c++
+//!
+//!    template <typename Input,
+//!              typename ReductionOp,
+//!              typename PrefixT,
+//!              typename ValueT = ::cuda::std::__remove_cvref_t<decltype(::cuda::std::declval<Input>()[0])>,
+//!              typename AccumT = ::cuda::std::__accumulator_t<ReductionOp, ValueT, PrefixT>>
+//!    _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE AccumT
+//!    ThreadReduce(const Input& input, ReductionOp reduction_op, PrefixT prefix)
 //!
 //! Performance Considerations
 //! ++++++++++++++++++++++++++
@@ -78,7 +92,7 @@ CUB_NAMESPACE_BEGIN
 //!
 //!   * Sum (``cub::Sum``) and Multiplication (``cub::Mul``) on SM70+ for ``__half`` data type
 //!   * Sum (``cub::Sum``) and Multiplication (``cub::Mul``) on SM80+ for ``__nv_bfloat16`` data type
-//!   * Minimum (``cub::Min``) and Maximum (``cub::Max``) on SM80+ for ``__half` and ``__nv_bfloat16`` data types
+//!   * Minimum (``cub::Min``) and Maximum (``cub::Max``) on SM80+ for ``__half`` and ``__nv_bfloat16`` data types
 //!   * Minimum (``cub::Min``) and Maximum (``cub::Max``) on SM90+ for ``int16_t`` and ``uint16_t`` data types
 //!     (Hopper DPX instructions)
 //!
@@ -87,7 +101,7 @@ CUB_NAMESPACE_BEGIN
 //!   * Sum (``cub::Sum``) on SM50+ for for integral data types
 //!   * Bitwise AND (``cub::BitAnd``), OR (``cub::BitOr``), XOR (``cub::BitXor``) on SM50+ for integer types
 //!   * Minimum (``cub::Min``) and Maximum (``cub::Max``) on SM90+ for integer types (Hopper DPX instructions),
-//!     ``__half`, and ``__nv_bfloat16`` data types
+//!     ``__half``, and ``__nv_bfloat16`` data types
 //!   * Minimum (``cub::Min``) and Maximum (``cub::Max``) on SM90+ for integer types (Hopper DPX instructions)
 //!
 //! - Instruction-Level Parallelism (ILP) by exploiting a binary tree reduction for all other cases
@@ -119,7 +133,7 @@ CUB_NAMESPACE_BEGIN
 //!   <tt>T operator()(const T &a, const T &b)</tt>
 //!
 //! @param[in] input
-//!   Input array
+//!   Array=like input
 //!
 //! @param[in] reduction_op
 //!   Binary reduction operator
@@ -130,6 +144,8 @@ template <typename Input,
           typename ReductionOp,
 #ifndef DOXYGEN_SHOULD_SKIP_THIS // Do not document
           typename ValueT = ::cuda::std::__remove_cvref_t<decltype(::cuda::std::declval<Input>()[0])>,
+#else
+          typename ValueT = random_access_value_t<Input>,
 #endif // !DOXYGEN_SHOULD_SKIP_THIS
           typename AccumT = ::cuda::std::__accumulator_t<ReductionOp, ValueT>>
 _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE AccumT ThreadReduce(const Input& input, ReductionOp reduction_op);
@@ -201,7 +217,7 @@ _CCCL_NODISCARD _CCCL_DEVICE constexpr bool enable_generic_simd_reduction()
 {
   using cub::detail::is_one_of;
   using T      = ::cuda::std::__remove_cvref_t<decltype(::cuda::std::declval<Input>()[0])>;
-  using Length = ::cuda::std::integral_constant<int, cub::detail::static_size<Input>()>;
+  using Length = ::cuda::std::integral_constant<int, cub::detail::static_size_v<Input>()>;
   // clang-format off
   return ((is_one_of<T, ::cuda::std::int16_t, ::cuda::std::uint16_t>() && is_one_of<ReductionOp, cub::Min, cub::Max>())
 #  if defined(_CCCL_HAS_NVFP16)
@@ -264,7 +280,7 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE _CCCL_CONSTEXPR_CXX14 bool enable
   }
   else
   {
-    constexpr auto length = cub::detail::static_size<Input>();
+    constexpr auto length = cub::detail::static_size_v<Input>();
     // clang-format off
     _NV_TARGET_DISPATCH(
       NV_PROVIDES_SM_90,
@@ -290,7 +306,7 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE _CCCL_CONSTEXPR_CXX14 bool enable
   using cub::detail::is_one_of;
   using ::cuda::std::is_same;
   using T               = ::cuda::std::__remove_cvref_t<decltype(::cuda::std::declval<Input>()[0])>;
-  constexpr auto length = cub::detail::static_size<Input>();
+  constexpr auto length = cub::detail::static_size_v<Input>();
   if _CCCL_CONSTEXPR_CXX17 (!is_same<T, AccumT>::value || length < 6)
   {
     return false;
@@ -340,7 +356,7 @@ ThreadReduceSequential(const Input& input, ReductionOp reduction_op)
 {
   AccumT retval = input[0];
 #  pragma unroll
-  for (int i = 1; i < cub::detail::static_size<Input>(); ++i)
+  for (int i = 1; i < cub::detail::static_size_v<Input>(); ++i)
   {
     retval = reduction_op(retval, input[i]);
   }
@@ -351,7 +367,7 @@ template <typename AccumT, typename Input, typename ReductionOp>
 _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE AccumT
 ThreadReduceBinaryTree(const Input& input, ReductionOp reduction_op)
 {
-  constexpr auto length = cub::detail::static_size<Input>();
+  constexpr auto length = cub::detail::static_size_v<Input>();
   auto array            = cub::detail::to_array<AccumT>(input);
 #  pragma unroll
   for (int i = 1; i < length; i *= 2)
@@ -369,7 +385,7 @@ template <typename AccumT, typename Input, typename ReductionOp>
 _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE AccumT
 ThreadReduceTernaryTree(const Input& input, ReductionOp reduction_op)
 {
-  constexpr auto length = cub::detail::static_size<Input>();
+  constexpr auto length = cub::detail::static_size_v<Input>();
   auto array            = cub::detail::to_array<AccumT>(input);
 #  pragma unroll
   for (int i = 1; i < length; i *= 3)
@@ -409,7 +425,7 @@ ThreadReduceSimd(const Input& input, ReductionOp reduction_op) -> ::cuda::std::_
   using T                       = ::cuda::std::__remove_cvref_t<decltype(input[0])>;
   using SimdReduceOp            = cub::internal::cub_operator_to_simd_operator_t<ReductionOp, T>;
   using SimdType                = simd_type_t<ReductionOp, T>;
-  constexpr auto length         = cub::detail::static_size<Input>();
+  constexpr auto length         = cub::detail::static_size_v<Input>();
   constexpr auto simd_ratio     = sizeof(SimdType) / sizeof(T);
   constexpr auto length_rounded = (length / simd_ratio) * simd_ratio; // TODO: replace with round_up()
   using UnpackedType            = ::cuda::std::array<T, simd_ratio>;
@@ -451,8 +467,8 @@ ThreadReduceSimd(const Input& input, ReductionOp reduction_op) -> ::cuda::std::_
 template <typename Input, typename ReductionOp, typename ValueT, typename AccumT>
 _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE AccumT ThreadReduce(const Input& input, ReductionOp reduction_op)
 {
-  static_assert(cub::detail::has_subscript<Input>::value, "Input must support the subscript operator[]");
-  static_assert(cub::detail::has_size<Input>::value, "Input must support the constexpr size() method");
+  static_assert(detail::is_fixed_size_random_access_range_t<Input>::value,
+                "Input must support the subscript operator[] and have a compile-time size");
   static_assert(cub::detail::has_binary_call_operator<ReductionOp, ValueT>::value,
                 "ReductionOp must have the binary call operator: operator(ValueT, ValueT)");
   using cub::internal::enable_promotion;
@@ -473,12 +489,6 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE AccumT ThreadReduce(const Input& 
   }
 }
 
-#endif // DOXYGEN_SHOULD_SKIP_THIS
-
-//! @rst
-//! AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-//! @endrst
-//!
 //! @brief Reduction over statically-sized array-like types, seeded with the specified @p prefix.
 //!
 //! @tparam Input
@@ -506,22 +516,22 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE AccumT ThreadReduce(const Input& 
 template <typename Input,
           typename ReductionOp,
           typename PrefixT,
-#ifndef DOXYGEN_SHOULD_SKIP_THIS // Do not document
+#  ifndef DOXYGEN_SHOULD_SKIP_THIS // Do not document
           typename ValueT = ::cuda::std::__remove_cvref_t<decltype(::cuda::std::declval<Input>()[0])>,
-#endif // !DOXYGEN_SHOULD_SKIP_THIS
+#  endif // !DOXYGEN_SHOULD_SKIP_THIS
           typename AccumT = ::cuda::std::__accumulator_t<ReductionOp, ValueT, PrefixT>>
 _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE AccumT
 ThreadReduce(const Input& input, ReductionOp reduction_op, PrefixT prefix)
 {
-  static_assert(detail::has_subscript<Input>::value, "Input must support the subscript operator[]");
-  static_assert(detail::has_size<Input>::value, "Input must support the constexpr size() method");
+  static_assert(detail::is_fixed_size_random_access_range_t<Input>::value,
+                "Input must support the subscript operator[] and have a compile-time size");
   static_assert(detail::has_binary_call_operator<ReductionOp, ValueT>::value,
                 "ReductionOp must have the binary call operator: operator(ValueT, ValueT)");
-  constexpr int length = cub::detail::static_size<Input>();
+  constexpr int length = cub::detail::static_size_v<Input>();
   // copy to a temporary array of type AccumT
   AccumT array[length + 1];
   array[0] = prefix;
-#pragma unroll
+#  pragma unroll
   for (int i = 0; i < length; ++i)
   {
     array[i + 1] = input[i];
@@ -534,7 +544,6 @@ ThreadReduce(const Input& input, ReductionOp reduction_op, PrefixT prefix)
 /***********************************************************************************************************************
  * Pointer Interfaces with explicit Length (internal use only)
  **********************************************************************************************************************/
-#ifndef DOXYGEN_SHOULD_SKIP_THIS // Do not document
 
 /// Internal namespace (to prevent ADL mishaps between static functions when mixing different CUB installations)
 namespace internal
