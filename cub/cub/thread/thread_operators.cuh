@@ -509,7 +509,7 @@ struct SimdMin<::cuda::std::uint16_t>
 #  if defined(_CCCL_HAS_NVFP16)
 
 template <>
-struct SimdMin<__half> : cub::Min
+struct SimdMin<__half>
 {
   using simd_type = __half2;
 
