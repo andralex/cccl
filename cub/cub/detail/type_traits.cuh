@@ -178,10 +178,7 @@ struct static_size<::cuda::std::array<T, N>, void> : ::cuda::std::integral_const
 template <typename T, ::cuda::std::size_t N>
 struct static_size<::cuda::std::span<T, N>, void> : ::cuda::std::integral_constant<int, N>
 {};
-
-#endif // defined(__cccl_lib_span) && __has_include(<cuda/std/span>)
-
-#if defined(__cccl_lib_mdspan) && __has_include(<cuda/std/mdspan>)
+#  if _CCCL_STD_VER >= 2020 || !defined(_CCCL_COMPILER_MSVC)
 
 template <typename T,
           typename E,
