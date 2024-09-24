@@ -120,10 +120,7 @@ template <typename T, ::cuda::std::size_t N>
 struct is_fixed_size_random_access_range<::cuda::std::span<T, N>, void> : ::cuda::std::true_type
 {};
 
-#endif // defined(__cccl_lib_span) && __has_include(<cuda/std/span>)
-
-#if defined(__cccl_lib_mdspan) && __has_include(<cuda/std/mdspan>)
-
+#  if _CCCL_STD_VER >= 2020 || !defined(_CCCL_COMPILER_MSVC)
 template <typename T,
           typename E,
           typename L,
