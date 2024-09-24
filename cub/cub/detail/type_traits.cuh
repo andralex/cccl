@@ -49,15 +49,9 @@ _CCCL_SUPPRESS_DEPRECATED_PUSH
 #include <cuda/std/functional>
 _CCCL_SUPPRESS_DEPRECATED_POP
 #include <cuda/std/type_traits>
-#if __has_include(<cuda/std/array>)
 #  include <cuda/std/array>
-#endif
-#if defined(__cccl_lib_span) && __has_include(<cuda/std/span>)
 #  include <cuda/std/span>
-#endif
-#if defined(__cccl_lib_mdspan) && __has_include(<cuda/std/mdspan>)
 #  include <cuda/std/mdspan>
-#endif
 
 #define _CUB_TEMPLATE_REQUIRES(...) ::cuda::std::__enable_if_t<(__VA_ARGS__)>* = nullptr
 
