@@ -188,7 +188,8 @@ template <typename T,
 struct static_size<::cuda::std::mdspan<T, E, L, A>, void> : : ::cuda::std::integral_constant<int, E::static_extent(1)>
 {};
 
-#endif // defined(__cccl_lib_mdspan) && __has_include(<cuda/std/mdspan>)
+#  endif // _CCCL_STD_VER >= 2020 || !_CCCL_COMPILER_MSVC
+#endif // _CCCL_STD_VER >= 2014
 
 template <typename T>
 _CCCL_NODISCARD _CCCL_HOST_DEVICE _CCCL_FORCEINLINE constexpr ::cuda::std::size_t static_size_v()
