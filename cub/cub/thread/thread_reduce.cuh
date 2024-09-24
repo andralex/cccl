@@ -54,9 +54,6 @@
 
 CUB_NAMESPACE_BEGIN
 
-//! @name ThreadReduce
-//! @{
-
 //! @rst
 //! The ``ThreadReduce`` function computes a reduction of items assigned to a single CUDA thread.
 //!
@@ -538,8 +535,6 @@ ThreadReduce(const Input& input, ReductionOp reduction_op, PrefixT prefix)
   }
   return cub::ThreadReduce<decltype(array), ReductionOp, AccumT, AccumT>(array, reduction_op);
 }
-
-//! @}  end member group
 
 /***********************************************************************************************************************
  * Pointer Interfaces with explicit Length (internal use only)

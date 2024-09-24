@@ -48,10 +48,10 @@
 _CCCL_SUPPRESS_DEPRECATED_PUSH
 #include <cuda/std/functional>
 _CCCL_SUPPRESS_DEPRECATED_POP
+#include <cuda/std/array>
+#include <cuda/std/mdspan>
+#include <cuda/std/span>
 #include <cuda/std/type_traits>
-#  include <cuda/std/array>
-#  include <cuda/std/span>
-#  include <cuda/std/mdspan>
 
 #define _CUB_TEMPLATE_REQUIRES(...) ::cuda::std::__enable_if_t<(__VA_ARGS__)>* = nullptr
 
@@ -109,7 +109,6 @@ template <typename T, ::cuda::std::size_t N>
 struct is_fixed_size_random_access_range<T[N], void> : ::cuda::std::true_type
 {};
 
-
 template <typename T, ::cuda::std::size_t N>
 struct is_fixed_size_random_access_range<::cuda::std::array<T, N>, void> : ::cuda::std::true_type
 {};
@@ -154,15 +153,16 @@ template <typename T, ::cuda::std::size_t N>
 struct static_size<T[N], void> : ::cuda::std::integral_constant<int, N>
 {};
 
-
 template <typename T, ::cuda::std::size_t N>
 struct static_size<::cuda::std::array<T, N>, void> : ::cuda::std::integral_constant<int, N>
 {};
 
 #if _CCCL_STD_VER >= 2014
+
 template <typename T, ::cuda::std::size_t N>
 struct static_size<::cuda::std::span<T, N>, void> : ::cuda::std::integral_constant<int, N>
 {};
+
 #  if _CCCL_STD_VER >= 2020 || !defined(_CCCL_COMPILER_MSVC)
 
 template <typename T,
@@ -183,4 +183,5 @@ _CCCL_NODISCARD _CCCL_HOST_DEVICE _CCCL_FORCEINLINE constexpr ::cuda::std::size_
 }
 
 } // namespace detail
+
 CUB_NAMESPACE_END
