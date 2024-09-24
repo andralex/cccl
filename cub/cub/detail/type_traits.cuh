@@ -135,7 +135,8 @@ template <typename T,
 struct is_fixed_size_random_access_range<::cuda::std::mdspan<T, E, L, A>, void> : ::cuda::std::true_type
 {};
 
-#endif // defined(__cccl_lib_mdspan) && __has_include(<cuda/std/mdspan>)
+#  endif // _CCCL_STD_VER >= 2020 || !_CCCL_COMPILER_MSVC
+#endif // _CCCL_STD_VER >= 2014
 
 template <typename T>
 using is_fixed_size_random_access_range_t = typename is_fixed_size_random_access_range<T>::type;
