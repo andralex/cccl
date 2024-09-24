@@ -115,9 +115,7 @@ template <typename T, ::cuda::std::size_t N>
 struct is_fixed_size_random_access_range<::cuda::std::array<T, N>, void> : ::cuda::std::true_type
 {};
 
-#endif // __has_include(<cuda/std/array>)
-
-#if defined(__cccl_lib_span) && __has_include(<cuda/std/span>)
+#if _CCCL_STD_VER >= 2014
 
 template <typename T, ::cuda::std::size_t N>
 struct is_fixed_size_random_access_range<::cuda::std::span<T, N>, void> : ::cuda::std::true_type
