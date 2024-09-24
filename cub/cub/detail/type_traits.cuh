@@ -154,7 +154,6 @@ template <typename T, ::cuda::std::size_t N>
 struct static_size<T[N], void> : ::cuda::std::integral_constant<int, N>
 {};
 
-#if __has_include(<cuda/std/array>)
 
 template <typename T, ::cuda::std::size_t N>
 struct static_size<::cuda::std::array<T, N>, void> : ::cuda::std::integral_constant<int, N>
