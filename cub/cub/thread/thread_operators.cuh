@@ -527,6 +527,18 @@ struct SimdMin<__half>
 
 #  if defined(_CCCL_HAS_NVBF16)
 
+// NOTE: cub::internal::halves2bfloat162 is not always available on older CUDA Toolkits for __CUDA_ARCH__ < 800
+_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 halves2bfloat162(__nv_bfloat16 a, __nv_bfloat16 b)
+{
+  unsigned tmp;
+  auto a_uint16 = ::cuda::std::bit_cast<::cuda::std::uint16_t>(a);
+  auto b_uint16 = ::cuda::std::bit_cast<::cuda::std::uint16_t>(b);
+  asm("{mov.b32 %0, {%1,%2};}\n" : "=r"(tmp) : "h"(a_uint16), "h"(b_uint16));
+  __nv_bfloat162 ret;
+  ::memcpy(&ret, &tmp, sizeof(ret));
+  return ret; // TODO: replace with ::cuda::std::bit_cast<__nv_bfloat162>(tmp);
+}
+
 template <>
 struct SimdMin<__nv_bfloat16>
 {
@@ -534,11 +546,11 @@ struct SimdMin<__nv_bfloat16>
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 operator()(__nv_bfloat162 a, __nv_bfloat162 b) const
   {
-    NV_IF_TARGET(
-      NV_PROVIDES_SM_80,
-      (return __hmin2(a, b);),
-      (return __halves2bfloat162(__float2bfloat16(cub::Min{}(__bfloat162float(a.x), __bfloat162float(b.x))),
-                                 __float2bfloat16(cub::Min{}(__bfloat162float(a.y), __bfloat162float(b.y))));));
+    NV_IF_TARGET(NV_PROVIDES_SM_80,
+                 (return __hmin2(a, b);),
+                 (return cub::internal::halves2bfloat162(
+                           __float2bfloat16(cub::Min{}(__bfloat162float(a.x), __bfloat162float(b.x))),
+                           __float2bfloat16(cub::Min{}(__bfloat162float(a.y), __bfloat162float(b.y))));));
   }
 };
 
@@ -601,11 +613,11 @@ struct SimdMax<__nv_bfloat16>
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 operator()(__nv_bfloat162 a, __nv_bfloat162 b) const
   {
-    NV_IF_TARGET(
-      NV_PROVIDES_SM_80,
-      (return __hmax2(a, b);),
-      (return __halves2bfloat162(__float2bfloat16(cub::Max{}(__bfloat162float(a.x), __bfloat162float(b.x))),
-                                 __float2bfloat16(cub::Max{}(__bfloat162float(a.y), __bfloat162float(b.y))));));
+    NV_IF_TARGET(NV_PROVIDES_SM_80,
+                 (return __hmax2(a, b);),
+                 (return cub::internal::halves2bfloat162(
+                           __float2bfloat16(cub::Max{}(__bfloat162float(a.x), __bfloat162float(b.x))),
+                           __float2bfloat16(cub::Max{}(__bfloat162float(a.y), __bfloat162float(b.y))));));
   }
 };
 
@@ -646,10 +658,11 @@ struct SimdSum<__nv_bfloat16>
 
   _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 operator()(__nv_bfloat162 a, __nv_bfloat162 b) const
   {
-    NV_IF_TARGET(NV_PROVIDES_SM_80,
-                 (return __hadd2(a, b);),
-                 (return __halves2bfloat162(__float2bfloat16(__bfloat162float(a.x) + __bfloat162float(b.x)),
-                                            __float2bfloat16(__bfloat162float(a.y) + __bfloat162float(b.y)));));
+    NV_IF_TARGET(
+      NV_PROVIDES_SM_80,
+      (return __hadd2(a, b);),
+      (return cub::internal::halves2bfloat162(__float2bfloat16(__bfloat162float(a.x) + __bfloat162float(b.x)),
+                                              __float2bfloat16(__bfloat162float(a.y) + __bfloat162float(b.y)));));
   }
 };
 
@@ -682,18 +695,6 @@ struct SimdMul<__half>
 #  endif // defined(_CCCL_HAS_NVFP16)
 
 #  if defined(_CCCL_HAS_NVBF16)
-
-// NOTE: __halves2bfloat162 is not always available on older CUDA Toolkits for __CUDA_ARCH__ < 800
-_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 halves2bfloat162(__nv_bfloat16 a, __nv_bfloat16 b)
-{
-  unsigned tmp;
-  auto a_uint16 = ::cuda::std::bit_cast<::cuda::std::uint16_t>(a);
-  auto b_uint16 = ::cuda::std::bit_cast<::cuda::std::uint16_t>(b);
-  asm("{mov.b32 %0, {%1,%2};}\n" : "=r"(tmp) : "h"(a_uint16), "h"(b_uint16));
-  __nv_bfloat162 ret;
-  ::memcpy(&ret, &tmp, sizeof(ret));
-  return ret; // TODO: replace with ::cuda::std::bit_cast<__nv_bfloat162>(tmp);
-}
 
 template <>
 struct SimdMul<__nv_bfloat16>
