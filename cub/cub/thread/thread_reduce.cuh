@@ -242,15 +242,15 @@ _CCCL_NODISCARD _CCCL_DEVICE constexpr bool enable_sm80_simd_reduction()
 {
   using cub::detail::is_one_of;
   using ::cuda::std::is_same;
-  return
-#  if defined(_CCCL_HAS_NVFP16)
-    is_same<T, __half>::value
+  return is_one_of<ReductionOp, cub::Min, cub::Max, cub::Sum, cub::Mul>() && Length >= 4
+#  if defined(_CCCL_HAS_NVFP16) && defined(_CCCL_HAS_NVBF16)
+      && (is_same<T, __half>::value || is_same<T, __nv_bfloat16>::value)
+#  elif defined(_CCCL_HAS_NVFP16)
+      && is_same<T, __half>::value
 #  elif defined(_CCCL_HAS_NVBF16)
-    is_same<T, __nv_bfloat16>::value
-#  else
-    false
+      && is_same<T, __nv_bfloat16>::value
 #  endif
-    && Length >= 4;
+    ;
 }
 
 template <typename T, typename ReductionOp, int Length>
@@ -290,7 +290,8 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE _CCCL_CONSTEXPR_CXX14 bool enable
       NV_PROVIDES_SM_70,
         (return enable_sm70_simd_reduction<T, ReductionOp, length>();),
       NV_IS_DEVICE,
-        (return false;)
+        (static_cast<void>(length); // maybe unused
+         return false;)
     );
     // clang-format on
     return false;
