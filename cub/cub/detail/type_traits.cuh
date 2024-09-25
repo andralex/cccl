@@ -119,7 +119,9 @@ template <typename T, ::cuda::std::size_t N>
 struct is_fixed_size_random_access_range<::cuda::std::span<T, N>, void> : ::cuda::std::true_type
 {};
 
-#  if _CCCL_STD_VER >= 2020 || !defined(_CCCL_COMPILER_MSVC)
+#endif // _CCCL_STD_VER >= 2014
+
+#if _CCCL_STD_VER >= 2020
 
 template <typename T, typename E, typename L, typename A>
 struct is_fixed_size_random_access_range<
@@ -128,8 +130,7 @@ struct is_fixed_size_random_access_range<
     : ::cuda::std::true_type
 {};
 
-#  endif // _CCCL_STD_VER >= 2020 || !_CCCL_COMPILER_MSVC
-#endif // _CCCL_STD_VER >= 2014
+#endif // _CCCL_STD_VER >= 2020
 
 template <typename T>
 using is_fixed_size_random_access_range_t = typename is_fixed_size_random_access_range<T>::type;
@@ -163,7 +164,9 @@ template <typename T, ::cuda::std::size_t N>
 struct static_size<::cuda::std::span<T, N>, void> : ::cuda::std::integral_constant<int, N>
 {};
 
-#  if _CCCL_STD_VER >= 2020 || !defined(_CCCL_COMPILER_MSVC)
+#endif // _CCCL_STD_VER >= 2014
+
+#if _CCCL_STD_VER >= 2020
 
 template <typename T, typename E, typename L, typename A>
 struct static_size<::cuda::std::mdspan<T, E, L, A>,
@@ -171,8 +174,7 @@ struct static_size<::cuda::std::mdspan<T, E, L, A>,
     : ::cuda::std::integral_constant<int, E::static_extent(1)>
 {};
 
-#  endif // _CCCL_STD_VER >= 2020 || !_CCCL_COMPILER_MSVC
-#endif // _CCCL_STD_VER >= 2014
+#endif // _CCCL_STD_VER >= 2020
 
 template <typename T>
 _CCCL_NODISCARD _CCCL_HOST_DEVICE _CCCL_FORCEINLINE constexpr ::cuda::std::size_t static_size_v()

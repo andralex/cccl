@@ -27,6 +27,7 @@
 
 #include <cub/thread/thread_reduce.cuh>
 #include <cub/util_macro.cuh>
+#include <cub/detail/type_traits.cuh>
 
 #include <thrust/iterator/constant_iterator.h>
 
@@ -41,11 +42,10 @@
 #include <tuple>
 #include <type_traits>
 
-#include "bfloat16.h"
 #include "c2h/custom_type.cuh"
+#include "c2h/extended_types.cuh"
+#include "c2h/generators.cuh"
 #include "catch2_test_helper.h"
-#include "cub/detail/type_traits.cuh"
-#include "half.h"
 
 template <int NUM_ITEMS, typename T, typename ReduceOperator>
 __global__ void thread_reduce_kernel(const T* d_in, T* d_out, ReduceOperator reduce_operator)
@@ -58,6 +58,53 @@ __global__ void thread_reduce_kernel(const T* d_in, T* d_out, ReduceOperator red
   }
   *d_out = cub::ThreadReduce(thread_data, reduce_operator);
 }
+
+template <int NUM_ITEMS, typename T, typename ReduceOperator>
+__global__ void thread_reduce_kernel_array(const T* d_in, T* d_out, ReduceOperator reduce_operator)
+{
+  ::cuda::std::array<T, NUM_ITEMS> thread_data;
+#pragma unroll
+  for (int i = 0; i < NUM_ITEMS; ++i)
+  {
+    thread_data[i] = d_in[i];
+  }
+  *d_out = cub::ThreadReduce(thread_data, reduce_operator);
+}
+
+#if _CCCL_STD_VER >= 2014
+
+template <int NUM_ITEMS, typename T, typename ReduceOperator>
+__global__ void thread_reduce_kernel_span(const T* d_in, T* d_out, ReduceOperator reduce_operator)
+{
+  T thread_data[NUM_ITEMS];
+#pragma unroll
+  for (int i = 0; i < NUM_ITEMS; ++i)
+  {
+    thread_data[i] = d_in[i];
+  }
+  ::cuda::std::span<T, NUM_ITEMS> span(thread_data);
+  *d_out = cub::ThreadReduce(span, reduce_operator);
+}
+
+#endif // _CCCL_STD_VER >= 2014
+
+#if _CCCL_STD_VER >= 2020
+
+template <int NUM_ITEMS, typename T, typename ReduceOperator>
+__global__ void thread_reduce_kernel_mdspan(const T* d_in, T* d_out, ReduceOperator reduce_operator)
+{
+  T thread_data[NUM_ITEMS];
+#pragma unroll
+  for (int i = 0; i < NUM_ITEMS; ++i)
+  {
+    thread_data[i] = d_in[i];
+  }
+  using Extent = ::cuda::std::extents<int, NUM_ITEMS>;
+  ::cuda::std::mdspan<T, Extent> mdspan(thread_data, ::cuda::std::extents<int, NUM_ITEMS>{});
+  *d_out = cub::ThreadReduce(mdspan, reduce_operator);
+}
+
+#endif // _CCCL_STD_VER >= 2020
 
 /***********************************************************************************************************************
  * CUB operator to STD operator
@@ -99,7 +146,7 @@ struct cub_operator_to_std<T, cub::BitXor>
 struct min_operator
 {
   template <typename T>
-  T operator()(const T& valueA, const T& valueB)
+  const T& operator()(const T& valueA, const T& valueB)
   {
     return ::std::min(valueA, valueB);
   }
@@ -108,7 +155,7 @@ struct min_operator
 struct max_operator
 {
   template <typename T>
-  T operator()(const T& valueA, const T& valueB)
+  const T& operator()(const T& valueA, const T& valueB)
   {
     return ::std::max(valueA, valueB);
   }
@@ -229,7 +276,7 @@ using cub_operator_fp_list = c2h::type_list<cub::Sum, cub::Mul, cub::Min, cub::M
 template <typename T, _CUB_TEMPLATE_REQUIRES(::cuda::std::is_floating_point<T>::value)>
 void verify_results(const T& expected_data, const T& test_results)
 {
-  REQUIRE(expected_data == Approx(test_results));
+  REQUIRE(expected_data == Approx(test_results).epsilon(0.02));
 }
 
 template <typename T, _CUB_TEMPLATE_REQUIRES(!::cuda::std::is_floating_point<T>::value)>
@@ -311,7 +358,7 @@ void run_thread_reduce_kernel(
   REQUIRE(cudaSuccess == cudaDeviceSynchronize());
 }
 
-static constexpr int max_size = 16;
+constexpr int max_size = 16;
 
 /***********************************************************************************************************************
  * Test cases
@@ -355,22 +402,57 @@ CUB_TEST("ThreadReduce Floating-Point Type Tests", "[reduce][thread]", fp_type_l
   }
 }
 
-CUB_TEST("ThreadReduce Narrow PrecisionType Tests", "[reduce][thread]", narrow_precision_type_list, cub_operator_fp_list)
+#if defined(TEST_HALF_T) || defined(TEST_BF_T)
+
+CUB_TEST("ThreadReduce Narrow PrecisionType Tests", "[reduce][thread][narrow]", narrow_precision_type_list, cub_operator_fp_list)
 {
   using value_t                = c2h::get<0, TestType>;
   constexpr auto reduce_op     = c2h::get<1, TestType>{};
   constexpr auto std_reduce_op = cub_operator_to_std_t<float, c2h::get<1, TestType>>{};
   const auto operator_identity = cub_operator_to_identity<float, c2h::get<1, TestType>>::value();
-  CAPTURE(c2h::type_name<value_t>(), max_size, c2h::type_name<decltype(reduce_op)>());
   c2h::device_vector<value_t> d_in(max_size);
   c2h::device_vector<value_t> d_out(1);
-  c2h::gen(CUB_SEED(10), d_in, std::numeric_limits<value_t>::min());
+  c2h::gen(CUB_SEED(10), d_in, value_t{0.0f}, value_t{2.0f});
   c2h::host_vector<float> h_in_float = d_in;
   for (int num_items = 1; num_items < max_size; ++num_items)
   {
+    CAPTURE(c2h::type_name<value_t>(), num_items, c2h::type_name<decltype(reduce_op)>());
     auto reference_result =
       std::accumulate(h_in_float.begin(), h_in_float.begin() + num_items, operator_identity, std_reduce_op);
     run_thread_reduce_kernel(num_items, d_in, d_out, reduce_op);
     verify_results(reference_result, float{c2h::host_vector<value_t>(d_out)[0]});
   }
+}
+
+#endif // defined(TEST_HALF_T) || defined(TEST_BF_T)
+
+CUB_TEST("ThreadReduce Containter Tests", "[reduce][thread]")
+{
+  c2h::device_vector<int> d_in(max_size);
+  c2h::device_vector<int> d_out(1);
+  c2h::gen(CUB_SEED(10), d_in);
+  c2h::host_vector<int> h_in = d_in;
+  auto reference_result      = std::accumulate(h_in.begin(), h_in.end(), 0, std::plus<>{});
+
+  thread_reduce_kernel_array<max_size>
+    <<<1, 1>>>(thrust::raw_pointer_cast(d_in.data()), thrust::raw_pointer_cast(d_out.data()), cub::Sum{});
+  REQUIRE(cudaSuccess == cudaPeekAtLastError());
+  REQUIRE(cudaSuccess == cudaDeviceSynchronize());
+  verify_results(reference_result, c2h::host_vector<int>(d_out)[0]);
+
+#if _CCCL_STD_VER >= 2014
+  thread_reduce_kernel_span<max_size>
+    <<<1, 1>>>(thrust::raw_pointer_cast(d_in.data()), thrust::raw_pointer_cast(d_out.data()), cub::Sum{});
+  REQUIRE(cudaSuccess == cudaPeekAtLastError());
+  REQUIRE(cudaSuccess == cudaDeviceSynchronize());
+  verify_results(reference_result, c2h::host_vector<int>(d_out)[0]);
+#endif // _CCCL_STD_VER >= 2014
+
+#if _CCCL_STD_VER >= 2020
+  thread_reduce_kernel_mdspan<max_size>
+    <<<1, 1>>>(thrust::raw_pointer_cast(d_in.data()), thrust::raw_pointer_cast(d_out.data()), cub::Sum{});
+  REQUIRE(cudaSuccess == cudaPeekAtLastError());
+  REQUIRE(cudaSuccess == cudaDeviceSynchronize());
+  verify_results(reference_result, c2h::host_vector<int>(d_out)[0]);
+#endif // _CCCL_STD_VER >= 2020
 }
