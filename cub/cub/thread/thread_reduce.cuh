@@ -63,7 +63,7 @@ CUB_NAMESPACE_BEGIN
 //! - A `reduction <http://en.wikipedia.org/wiki/Reduce_(higher-order_function)>`__ (or *fold*)
 //!   uses a binary combining operator to compute a single aggregate from a list of input elements.
 //! - Supports array-like types that are statically-sized and can be indexed with the ``[] operator``:
-//!   raw arrays, ``std::array``, ``std::span``, ``std::mdspan``
+//!   raw arrays, ``std::array``, ``std::span``,  ``std::mdspan`` (C++23),
 //!
 //! Overloading
 //! ++++++++++++++++++++++++++
@@ -97,7 +97,7 @@ CUB_NAMESPACE_BEGIN
 //!
 //!   * Sum (``cub::Sum``) on SM50+ for for integral data types
 //!   * Bitwise AND (``cub::BitAnd``), OR (``cub::BitOr``), XOR (``cub::BitXor``) on SM50+ for integer types
-//!   * Minimum (``cub::Min``) and Maximum (``cub::Max``) on SM90+ for integer types (Hopper DPX instructions),
+//!   * Minimum (``cub::Min``) and Maximum (``cub::Max``) on SM80+ for integer types (Hopper DPX instructions),
 //!     ``__half``, and ``__nv_bfloat16`` data types
 //!   * Minimum (``cub::Min``) and Maximum (``cub::Max``) on SM90+ for integer types (Hopper DPX instructions)
 //!
@@ -304,7 +304,7 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE _CCCL_CONSTEXPR_CXX14 bool enable
   using ::cuda::std::is_same;
   using T               = ::cuda::std::__remove_cvref_t<decltype(::cuda::std::declval<Input>()[0])>;
   constexpr auto length = cub::detail::static_size_v<Input>();
-  if _CCCL_CONSTEXPR_CXX17 (!is_same<T, AccumT>::value || length < 6)
+  if _CCCL_CONSTEXPR_CXX17 (length < 6)
   {
     return false;
   }
@@ -322,8 +322,8 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE _CCCL_CONSTEXPR_CXX14 bool enable
 #endif
                          >() &&
                 is_one_of<ReductionOp, cub::Min, cub::Max>();),
-      NV_PROVIDES_SM_70,
-        (return is_one_of<T, ::cuda::std::int32_t, ::cuda::std::uint32_t, ::cuda::std::int64_t, ::cuda::std::uint64_t>()
+      NV_PROVIDES_SM_50,
+        (return is_one_of<AccumT, ::cuda::std::int32_t, ::cuda::std::uint32_t, ::cuda::std::int64_t, ::cuda::std::uint64_t>()
              && is_one_of<ReductionOp, cub::Sum, cub::BitAnd, cub::BitOr, cub::BitXor>();),
       NV_IS_DEVICE,
         (return false;)
