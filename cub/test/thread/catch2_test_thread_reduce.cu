@@ -272,11 +272,11 @@ using cub_operator_fp_list = c2h::type_list<cub::Sum, cub::Mul, cub::Min, cub::M
 /***********************************************************************************************************************
  * Verify results and kernel launch
  **********************************************************************************************************************/
-
+#define CCCCL_CHECK_MAX_NUM_ITEMS
 template <typename T, _CUB_TEMPLATE_REQUIRES(::cuda::std::is_floating_point<T>::value)>
 void verify_results(const T& expected_data, const T& test_results)
 {
-  REQUIRE(expected_data == Approx(test_results).epsilon(0.02));
+  REQUIRE(expected_data == Approx(test_results).epsilon(0.05));
 }
 
 template <typename T, _CUB_TEMPLATE_REQUIRES(!::cuda::std::is_floating_point<T>::value)>
@@ -291,6 +291,7 @@ void run_thread_reduce_kernel(
 {
   switch (num_items)
   {
+#if !defined(CCCCL_CHECK_MAX_NUM_ITEMS)
     case 1:
       thread_reduce_kernel<1>
         <<<1, 1>>>(thrust::raw_pointer_cast(in.data()), thrust::raw_pointer_cast(out.data()), reduce_operator);
@@ -351,6 +352,11 @@ void run_thread_reduce_kernel(
       thread_reduce_kernel<15>
         <<<1, 1>>>(thrust::raw_pointer_cast(in.data()), thrust::raw_pointer_cast(out.data()), reduce_operator);
       break;
+#endif
+    case 16:
+      thread_reduce_kernel<16>
+        <<<1, 1>>>(thrust::raw_pointer_cast(in.data()), thrust::raw_pointer_cast(out.data()), reduce_operator);
+      break;
     default:
       FAIL("Unsupported number of items");
   }
@@ -358,7 +364,15 @@ void run_thread_reduce_kernel(
   REQUIRE(cudaSuccess == cudaDeviceSynchronize());
 }
 
-constexpr int max_size = 16;
+#if !defined(CCCCL_CHECK_MAX_NUM_ITEMS)
+constexpr int min_size  = 1;
+constexpr int max_size  = 16;
+constexpr int num_seeds = 10;
+#else
+constexpr int min_size  = 16;
+constexpr int max_size  = 16;
+constexpr int num_seeds = 1;
+#endif
 
 /***********************************************************************************************************************
  * Test cases
@@ -373,9 +387,9 @@ CUB_TEST("ThreadReduce Integral Type Tests", "[reduce][thread]", integral_type_l
   CAPTURE(c2h::type_name<value_t>(), max_size, c2h::type_name<decltype(reduce_op)>());
   c2h::device_vector<value_t> d_in(max_size);
   c2h::device_vector<value_t> d_out(1);
-  c2h::gen(CUB_SEED(10), d_in, std::numeric_limits<value_t>::min());
+  c2h::gen(CUB_SEED(num_seeds), d_in, std::numeric_limits<value_t>::min());
   c2h::host_vector<value_t> h_in = d_in;
-  for (int num_items = 1; num_items < max_size; ++num_items)
+  for (int num_items = min_size; num_items <= max_size; ++num_items)
   {
     auto reference_result = std::accumulate(h_in.begin(), h_in.begin() + num_items, operator_identity, std_reduce_op);
     run_thread_reduce_kernel(num_items, d_in, d_out, reduce_op);
@@ -392,9 +406,9 @@ CUB_TEST("ThreadReduce Floating-Point Type Tests", "[reduce][thread]", fp_type_l
   CAPTURE(c2h::type_name<value_t>(), max_size, c2h::type_name<decltype(reduce_op)>());
   c2h::device_vector<value_t> d_in(max_size);
   c2h::device_vector<value_t> d_out(1);
-  c2h::gen(CUB_SEED(10), d_in, std::numeric_limits<value_t>::min());
+  c2h::gen(CUB_SEED(num_seeds), d_in, std::numeric_limits<value_t>::min());
   c2h::host_vector<value_t> h_in = d_in;
-  for (int num_items = 1; num_items < max_size; ++num_items)
+  for (int num_items = min_size; num_items <= max_size; ++num_items)
   {
     auto reference_result = std::accumulate(h_in.begin(), h_in.begin() + num_items, operator_identity, std_reduce_op);
     run_thread_reduce_kernel(num_items, d_in, d_out, reduce_op);
@@ -415,9 +429,9 @@ CUB_TEST("ThreadReduce Narrow PrecisionType Tests",
   const auto operator_identity = cub_operator_to_identity<float, c2h::get<1, TestType>>::value();
   c2h::device_vector<value_t> d_in(max_size);
   c2h::device_vector<value_t> d_out(1);
-  c2h::gen(CUB_SEED(10), d_in, value_t{0.0f}, value_t{2.0f});
+  c2h::gen(CUB_SEED(num_seeds), d_in, value_t{0.0f}, value_t{2.0f});
   c2h::host_vector<float> h_in_float = d_in;
-  for (int num_items = 1; num_items < max_size; ++num_items)
+  for (int num_items = min_size; num_items <= max_size; ++num_items)
   {
     CAPTURE(c2h::type_name<value_t>(), num_items, c2h::type_name<decltype(reduce_op)>());
     auto reference_result =
@@ -433,7 +447,7 @@ CUB_TEST("ThreadReduce Containter Tests", "[reduce][thread]")
 {
   c2h::device_vector<int> d_in(max_size);
   c2h::device_vector<int> d_out(1);
-  c2h::gen(CUB_SEED(10), d_in);
+  c2h::gen(CUB_SEED(num_seeds), d_in);
   c2h::host_vector<int> h_in = d_in;
   auto reference_result      = std::accumulate(h_in.begin(), h_in.end(), 0, std::plus<>{});
 

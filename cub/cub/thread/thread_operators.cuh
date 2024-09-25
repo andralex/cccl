@@ -51,6 +51,7 @@
 #include <cub/util_cpp_dialect.cuh>
 #include <cub/util_type.cuh>
 
+#include <cuda/std/bit> // cuda::std::bit_cast
 #include <cuda/std/functional> // cuda::std::plus
 #include <cuda/std/type_traits> // cuda::std::common_type
 #include <cuda/std/utility> // cuda::std::forward
@@ -682,6 +683,18 @@ struct SimdMul<__half>
 
 #  if defined(_CCCL_HAS_NVBF16)
 
+// NOTE: __halves2bfloat162 is not always available on older CUDA Toolkits for __CUDA_ARCH__ < 800
+_CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 halves2bfloat162(__nv_bfloat16 a, __nv_bfloat16 b)
+{
+  unsigned tmp;
+  auto a_uint16 = ::cuda::std::bit_cast<::cuda::std::uint16_t>(a);
+  auto b_uint16 = ::cuda::std::bit_cast<::cuda::std::uint16_t>(b);
+  asm("{mov.b32 %0, {%1,%2};}\n" : "=r"(tmp) : "h"(a_uint16), "h"(b_uint16));
+  __nv_bfloat162 ret;
+  ::memcpy(&ret, &tmp, sizeof(ret));
+  return ret; // TODO: replace with ::cuda::std::bit_cast<__nv_bfloat162>(tmp);
+}
+
 template <>
 struct SimdMul<__nv_bfloat16>
 {
@@ -691,8 +704,8 @@ struct SimdMul<__nv_bfloat16>
   {
     NV_IF_TARGET(NV_PROVIDES_SM_80,
                  (return __hmul2(a, b);),
-                 (return __halves2bfloat162(__float2bfloat16(__bfloat162float(a.x) * __bfloat162float(b.x)),
-                                            __float2bfloat16(__bfloat162float(a.y) * __bfloat162float(b.y)));));
+                 (return halves2bfloat162(__float2bfloat16(__bfloat162float(a.x) * __bfloat162float(b.x)),
+                                          __float2bfloat16(__bfloat162float(a.y) * __bfloat162float(b.y)));));
   }
 };
 
