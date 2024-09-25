@@ -25,9 +25,9 @@
  *
  ******************************************************************************/
 
+#include <cub/detail/type_traits.cuh>
 #include <cub/thread/thread_reduce.cuh>
 #include <cub/util_macro.cuh>
-#include <cub/detail/type_traits.cuh>
 
 #include <thrust/iterator/constant_iterator.h>
 
@@ -77,7 +77,7 @@ template <int NUM_ITEMS, typename T, typename ReduceOperator>
 __global__ void thread_reduce_kernel_span(const T* d_in, T* d_out, ReduceOperator reduce_operator)
 {
   T thread_data[NUM_ITEMS];
-#pragma unroll
+#  pragma unroll
   for (int i = 0; i < NUM_ITEMS; ++i)
   {
     thread_data[i] = d_in[i];
@@ -94,7 +94,7 @@ template <int NUM_ITEMS, typename T, typename ReduceOperator>
 __global__ void thread_reduce_kernel_mdspan(const T* d_in, T* d_out, ReduceOperator reduce_operator)
 {
   T thread_data[NUM_ITEMS];
-#pragma unroll
+#  pragma unroll
   for (int i = 0; i < NUM_ITEMS; ++i)
   {
     thread_data[i] = d_in[i];
@@ -404,7 +404,10 @@ CUB_TEST("ThreadReduce Floating-Point Type Tests", "[reduce][thread]", fp_type_l
 
 #if defined(TEST_HALF_T) || defined(TEST_BF_T)
 
-CUB_TEST("ThreadReduce Narrow PrecisionType Tests", "[reduce][thread][narrow]", narrow_precision_type_list, cub_operator_fp_list)
+CUB_TEST("ThreadReduce Narrow PrecisionType Tests",
+         "[reduce][thread][narrow]",
+         narrow_precision_type_list,
+         cub_operator_fp_list)
 {
   using value_t                = c2h::get<0, TestType>;
   constexpr auto reduce_op     = c2h::get<1, TestType>{};
