@@ -296,6 +296,7 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE _CCCL_CONSTEXPR_CXX14 bool enable
     // clang-format on
     return false;
   }
+  return false; // nvcc 11.x warning workaround
 }
 
 template <typename Input, typename ReductionOp, typename AccumT>
@@ -326,11 +327,10 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE _CCCL_CONSTEXPR_CXX14 bool enable
       NV_PROVIDES_SM_50,
         (return is_one_of<AccumT, ::cuda::std::int32_t, ::cuda::std::uint32_t, ::cuda::std::int64_t, ::cuda::std::uint64_t>()
              && is_one_of<ReductionOp, cub::Sum, cub::BitAnd, cub::BitOr, cub::BitXor>();),
-      NV_IS_DEVICE,
+      NV_ANY_TARGET,
         (return false;)
     );
     // clang-format on
-    return false;
   }
 }
 
