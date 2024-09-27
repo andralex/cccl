@@ -193,7 +193,8 @@ using cub_operator_to_std_t = typename cub_operator_to_std<T, Operator>::type;
  **********************************************************************************************************************/
 
 template <typename T, typename Operator, typename = void>
-struct cub_operator_to_identity {};
+struct cub_operator_to_identity
+{};
 
 template <typename T>
 struct cub_operator_to_identity<T, cub::Sum>
