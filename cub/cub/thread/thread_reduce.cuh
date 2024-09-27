@@ -336,6 +336,7 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE _CCCL_CONSTEXPR_CXX14 bool enable
     );
     // clang-format on
   }
+  return false; // nvcc 11.x warning workaround
 }
 
 template <typename Input, typename ReductionOp, typename AccumT>
