@@ -527,7 +527,7 @@ struct SimdMin<__half>
 
 #  if defined(_CCCL_HAS_NVBF16)
 
-// NOTE: cub::internal::halves2bfloat162 is not always available on older CUDA Toolkits for __CUDA_ARCH__ < 800
+// NOTE: __halves2bfloat162 is not always available on older CUDA Toolkits for __CUDA_ARCH__ < 800
 _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE __nv_bfloat162 halves2bfloat162(__nv_bfloat16 a, __nv_bfloat16 b)
 {
   unsigned tmp;

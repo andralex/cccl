@@ -85,7 +85,7 @@ CUB_NAMESPACE_BEGIN
 //!
 //! The function provides the following optimizations
 //!
-//! - Vectorization for
+//! - Vectorization/SIMD for
 //!
 //!   * Sum (``cub::Sum``) and Multiplication (``cub::Mul``) on SM70+ for ``__half`` data type
 //!   * Sum (``cub::Sum``) and Multiplication (``cub::Mul``) on SM80+ for ``__nv_bfloat16`` data type
@@ -95,11 +95,12 @@ CUB_NAMESPACE_BEGIN
 //!
 //! - Instruction-Level Parallelism (ILP) by exploiting a ternary tree reduction for
 //!
-//!   * Sum (``cub::Sum``) on SM50+ for for integral data types
-//!   * Bitwise AND (``cub::BitAnd``), OR (``cub::BitOr``), XOR (``cub::BitXor``) on SM50+ for integer types
-//!   * Minimum (``cub::Min``) and Maximum (``cub::Max``) on SM80+ for integer types (Hopper DPX instructions),
-//!     ``__half``, and ``__nv_bfloat16`` data types
-//!   * Minimum (``cub::Min``) and Maximum (``cub::Max``) on SM90+ for integer types (Hopper DPX instructions)
+//!   * Sum (``cub::Sum``), Bitwise AND (``cub::BitAnd``), OR (``cub::BitOr``), XOR (``cub::BitXor``) on SM50+ for
+//!     integer data types
+//!   * Minimum (``cub::Min``) and Maximum (``cub::Max``) on SM80+ for integer data types (Hopper DPX instructions),
+//!     ``__half2``, ``__nv_bfloat162``, ``__half`` (after vectorization), and ``__nv_bfloat16`` (after vectorization)
+//!     data types
+//!   * Minimum (``cub::Min``) and Maximum (``cub::Max``) on SM90+ for integer data types (Hopper DPX instructions)
 //!
 //! - Instruction-Level Parallelism (ILP) by exploiting a binary tree reduction for all other cases
 //!
@@ -315,17 +316,20 @@ _CCCL_NODISCARD _CCCL_DEVICE _CCCL_FORCEINLINE _CCCL_CONSTEXPR_CXX14 bool enable
     // clang-format off
     NV_DISPATCH_TARGET(
       NV_PROVIDES_SM_90,
-        (return is_one_of<T, ::cuda::std::int32_t, ::cuda::std::uint32_t, ::cuda::std::int64_t, ::cuda::std::uint64_t
+        (return (is_one_of<T, ::cuda::std::int32_t, ::cuda::std::uint32_t, ::cuda::std::int64_t, ::cuda::std::uint64_t>
+                 && is_one_of<ReductionOp, cub::Min, cub::Max, cub::Sum, cub::BitAnd, cub::BitOr, cub::BitXor>())
 #if defined(_CCCL_HAS_NVFP16)
-                          , __half2
+               || (is_same<T, __half2>::value &&
+                   is_one_of<ReductionOp, cub::Min, cub::Max, SimdMin<__half>, SimdMax<__half>>())
 #endif
 #if defined(_CCCL_HAS_NVBF16)
-                          , __nv_bfloat162
+               || (is_same<T, __nv_bfloat162>::value &&
+                   is_one_of<ReductionOp, cub::Min, cub::Max, SimdMin<__nv_bfloat16>, SimdMax<__nv_bfloat16>>())
 #endif
-                         >() &&
-                is_one_of<ReductionOp, cub::Min, cub::Max>();),
-      NV_PROVIDES_SM_50, // SM50 and above
-        (return is_one_of<AccumT, ::cuda::std::int32_t, ::cuda::std::uint32_t, ::cuda::std::int64_t, ::cuda::std::uint64_t>()
+         ;),
+      NV_PROVIDES_SM_50,
+        (return is_one_of<AccumT, ::cuda::std::int32_t, ::cuda::std::uint32_t, ::cuda::std::int64_t,
+                                  ::cuda::std::uint64_t>()
              && is_one_of<ReductionOp, cub::Sum, cub::BitAnd, cub::BitOr, cub::BitXor>();),
       NV_ANY_TARGET,
         (return false;)
