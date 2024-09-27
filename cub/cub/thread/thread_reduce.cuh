@@ -459,6 +459,7 @@ ThreadReduceSimd(const Input& input, ReductionOp reduction_op) -> ::cuda::std::_
     }
     return unsafe_bitcast<UnpackedType>(result)[0];
   }
+  return input[0]; // nvcc 11.x warning workaround (never reached)
 }
 
 } // namespace internal
