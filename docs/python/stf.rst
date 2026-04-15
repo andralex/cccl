@@ -81,6 +81,26 @@ Places
   ``data_place.host()``, ``data_place.device(device_id)``, ``data_place.managed()``.
   Use when creating logical data or in a dependency, e.g. ``lZ.rw(data_place.device(1))``.
 
+Green contexts (optional)
+-------------------------
+
+`Green contexts <https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GREEN__CONTEXT.html>`__
+partition a GPU into SM subsets for stronger isolation between clients. Bindings require
+CUDA **12.4+** and a driver that supports green contexts; otherwise construction fails or
+you should skip tests that need them.
+
+* ``green_context_helper(sm_count, dev_id=0)`` — builds as many partitions as the
+  device allows, each using ``sm_count`` SMs. ``len(helper)`` matches the number of
+  views.
+* ``helper.get_view(i)`` — returns a ``green_ctx_view`` for partition ``i``.
+* ``exec_place.green_ctx(view, use_green_ctx_data_place=False)`` — execution place for
+  that partition. With ``use_green_ctx_data_place=True``, the place’s affine data place
+  is also a green-context data place (see tests).
+* ``data_place.green_ctx(view)`` — data place tied to the same partition.
+
+Call ``machine_init()`` once per process before using places the way the STF C++ layer
+expects (see ``tests/stf/test_place_support.py`` for green-context and scope examples).
+
 Tokens
 ------
 
@@ -92,7 +112,8 @@ Example collections
 -------------------
 
 For runnable examples (Numba kernels, PyTorch, tokens, multi-GPU, FDTD), see the
-`STF tests and examples <https://github.com/NVIDIA/cccl/tree/main/python/cuda_cccl_experimental/tests/stf>`_.
+`STF tests and examples <https://github.com/NVIDIA/cccl/tree/main/python/cuda_cccl_experimental/tests/stf>`_
+(including ``example_token_ordering.py`` for **token-only** ordering of Numba kernels).
 
 For the full STF programming model, graph visualization, and C++ API, see
 :ref:`CUDASTF (C++) <stf>`.
