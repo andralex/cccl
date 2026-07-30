@@ -401,7 +401,8 @@ decltype(auto) operator->*(with_location<throwproof_t> s, F&& f) noexcept
  *
  * Use around best-effort code where a failure should not escape (e.g. optional DOT
  * timing annotations) but the caller may still want to inspect or rethrow later.
- * The callable's return value is discarded; the result is empty if nothing was thrown.
+ * The callable's return value must be `void` (enforced at compile time); the
+ * result is empty if nothing was thrown.
  *
  * Usage: `auto e = defer_exception->*[&] { ... };`
  *
@@ -417,6 +418,8 @@ struct defer_exception_t
 template <class F>
 [[nodiscard]] ::std::exception_ptr operator->*(defer_exception_t, F&& f) noexcept
 {
+  static_assert(::std::is_void_v<decltype(::std::forward<F>(f)())>,
+                "defer_exception requires a void-returning callable");
   _CCCL_TRY
   {
     ::std::forward<F>(f)();
