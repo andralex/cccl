@@ -65,75 +65,6 @@
 namespace cuda::experimental::stf
 {
 /**
- * @brief A suppressing handler policy that reports an exception and resumes (`std::ignore`).
- *
- * `on_throw(notify) << callable` reports on `stderr`. A configured copy reports elsewhere:
- * `notify(file)` writes to a `FILE*`, `notify(stream)` to a `std::ostream`. An object rather
- * than a function because it is an overload set, which must travel as one value.
- *
- * The report carries the location and the exception's message, or "nonstandard exception" for
- * an exception that does not derive from `std::exception` (which reaches a handler as
- * `nullptr`). The exception hook returns `std::ignore`, marking a resuming policy.
- */
-struct notify_t
-{
-  //! @cond
-  using __stf_policy_tag = void;
-  //! @endcond
-
-  // Destination: at most one of these is set. Both null means `stderr`.
-  ::FILE* __file_       = nullptr;
-  ::std::ostream* __os_ = nullptr;
-
-  //! @brief Returns a copy configured to report on `__file` instead of `stderr`.
-  notify_t operator()(::FILE* __file) const
-  {
-    notify_t __copy;
-    __copy.__file_ = __file;
-    return __copy;
-  }
-
-  //! @brief Returns a copy configured to report on `__os` instead of `stderr`.
-  notify_t operator()(::std::ostream& __os) const
-  {
-    notify_t __copy;
-    __copy.__os_ = &__os;
-    return __copy;
-  }
-
-  //! @brief Reports the exception and resumes. Writes to the configured `std::ostream` if any,
-  //! else the configured `FILE*` if any, else `stderr`. The ostream write is best-effort: a
-  //! stream configured to throw does not get to end the program from inside a handler.
-  decltype(::std::ignore)
-  operator()(const ::std::exception* __exception, const ::cuda::std::source_location __loc) const noexcept
-  {
-    if (__os_ != nullptr)
-    {
-      _CCCL_TRY
-      {
-        *__os_ << __loc.file_name() << '(' << __loc.line() << ") on_throw violation in " << __loc.function_name()
-               << ": " << (__exception != nullptr ? __exception->what() : "nonstandard exception") << '\n';
-        __os_->flush();
-      }
-      _CCCL_CATCH_ALL {}
-    }
-    else
-    {
-      ::FILE* const __out = __file_ != nullptr ? __file_ : stderr;
-      ::fprintf(__out,
-                "%s(%u) on_throw violation in %s: %s\n",
-                __loc.file_name(),
-                __loc.line(),
-                __loc.function_name(),
-                __exception != nullptr ? __exception->what() : "nonstandard exception");
-      ::fflush(__out);
-    }
-    return ::std::ignore;
-  }
-};
-inline constexpr notify_t notify{};
-
-/**
  * @brief The bottom type: a type with no values, convertible to every type.
  *
  * A callable that declares `nothing` as its return type promises in the type system that it
@@ -193,6 +124,74 @@ struct nothing final
 }
 
 /**
+ * @brief A suppressing handler policy that reports an exception and resumes (`std::ignore`).
+ *
+ * `on_throw(notify) << callable` reports on `stderr`. A configured copy reports elsewhere:
+ * `notify(file)` writes to a `FILE*`, `notify(stream)` to a `std::ostream`. An object rather
+ * than a function because it is an overload set, which must travel as one value.
+ *
+ * The report carries the location and the exception's message, or "nonstandard exception" for
+ * an exception that does not derive from `std::exception` (which reaches a handler as
+ * `nullptr`). The exception hook returns `std::ignore`, marking a resuming policy.
+ */
+struct notify_t
+{
+  //! @cond
+  using __stf_policy_tag = void;
+  //! @endcond
+
+  // Destination: `__os_` wins if set, otherwise `__file_` (default `stderr`).
+  ::FILE* __file_       = stderr;
+  ::std::ostream* __os_ = nullptr;
+
+  //! @brief Returns a copy configured to report on `__file` instead of `stderr`.
+  notify_t operator()(::FILE* __file) const
+  {
+    notify_t __copy;
+    __copy.__file_ = __file;
+    return __copy;
+  }
+
+  //! @brief Returns a copy configured to report on `__os` instead of `stderr`.
+  notify_t operator()(::std::ostream& __os) const
+  {
+    notify_t __copy;
+    __copy.__os_ = &__os;
+    return __copy;
+  }
+
+  //! @brief Reports the exception and resumes. Writes to the configured `std::ostream` if any,
+  //! else `__file_` (default `stderr`). The ostream write is best-effort: a stream configured
+  //! to throw does not get to end the program from inside a handler.
+  decltype(::std::ignore)
+  operator()(const ::std::exception* __exception, const ::cuda::std::source_location __loc) const noexcept
+  {
+    if (__os_)
+    {
+      _CCCL_TRY
+      {
+        *__os_ << __loc.file_name() << '(' << __loc.line() << ") on_throw violation in " << __loc.function_name()
+               << ": " << (__exception != nullptr ? __exception->what() : "nonstandard exception") << '\n';
+        __os_->flush();
+      }
+      _CCCL_CATCH_ALL {}
+    }
+    else
+    {
+      ::fprintf(__file_,
+                "%s(%u) on_throw violation in %s: %s\n",
+                __loc.file_name(),
+                __loc.line(),
+                __loc.function_name(),
+                __exception != nullptr ? __exception->what() : "nonstandard exception");
+      ::fflush(__file_);
+    }
+    return ::std::ignore;
+  }
+};
+inline const notify_t notify{};
+
+/**
  * @brief The identity element of `&`: a policy with no capabilities at all.
  *
  * `noop & p` and `p & noop` both behave as `p`. Its use is to head a chain so that every
@@ -226,8 +225,7 @@ struct defer_t
   //! @endcond
 
   //! @brief Captures the in-flight exception; the answer converts to the expression's type.
-  ::std::exception_ptr operator()([[maybe_unused]] const ::std::exception* __exception,
-                                  [[maybe_unused]] const ::cuda::std::source_location __loc) const noexcept
+  ::std::exception_ptr operator()(const ::std::exception*, const ::cuda::std::source_location) const noexcept
   {
     return ::std::current_exception();
   }
@@ -252,8 +250,7 @@ struct rethrow_t
   using __stf_policy_tag = void;
   //! @endcond
 
-  [[noreturn]] nothing operator()([[maybe_unused]] const ::std::exception* __exception,
-                                  [[maybe_unused]] const ::cuda::std::source_location __loc) const
+  [[noreturn]] nothing operator()(const ::std::exception*, const ::cuda::std::source_location) const
   {
     throw;
   }
@@ -321,7 +318,7 @@ struct retry_t
   using __stf_policy_tag = void;
   //! @endcond
 
-  int __left_;
+  int __left_ = 0;
 
   template <class _Fn>
   decltype(auto) invoke(_Fn&& __fn)
@@ -377,8 +374,7 @@ struct as_expected_t
   }
 
   ::cuda::std::unexpected<::std::exception_ptr>
-  operator()([[maybe_unused]] const ::std::exception* __exception,
-             [[maybe_unused]] const ::cuda::std::source_location __loc) const noexcept
+  operator()(const ::std::exception*, const ::cuda::std::source_location) const noexcept
   {
     return ::cuda::std::unexpected<::std::exception_ptr>{::std::current_exception()};
   }
@@ -511,8 +507,7 @@ struct __terminating_action
   using __stf_policy_tag = void;
   _Action __action_;
 
-  [[noreturn]] nothing operator()([[maybe_unused]] const ::std::exception* __exception,
-                                  [[maybe_unused]] const ::cuda::std::source_location __loc) noexcept
+  [[noreturn]] nothing operator()(const ::std::exception* __exception, const ::cuda::std::source_location __loc) noexcept
   {
     notify(__exception, __loc);
     __action_();
@@ -525,8 +520,7 @@ struct __ignore_policy
 {
   using __stf_policy_tag = void;
 
-  decltype(::std::ignore) operator()([[maybe_unused]] const ::std::exception* __exception,
-                                     [[maybe_unused]] const ::cuda::std::source_location __loc) const noexcept
+  decltype(::std::ignore) operator()(const ::std::exception*, const ::cuda::std::source_location) const noexcept
   {
     return ::std::ignore;
   }
@@ -610,8 +604,7 @@ struct __policy_and
   template <class _LL                                                                             = _L,
             class _RR                                                                             = _R,
             ::cuda::std::enable_if_t<__has_exception_hook<_LL> || __has_exception_hook<_RR>, int> = 0>
-  decltype(auto) operator()([[maybe_unused]] const ::std::exception* __exception,
-                            [[maybe_unused]] const ::cuda::std::source_location __loc)
+  decltype(auto) operator()(const ::std::exception* __exception, const ::cuda::std::source_location __loc)
   {
     if constexpr (__has_exception_hook<_L>)
     {
@@ -1077,8 +1070,22 @@ template <class _L,
           ::cuda::std::enable_if_t<detail::__is_stf_policy_v<_L> || detail::__is_stf_policy_v<_R>, int> = 0>
 auto operator&(_L&& __l, _R&& __r)
 {
-  return detail::__make_and(detail::__normalize(::cuda::std::forward<_L>(__l)),
-                            detail::__normalize(::cuda::std::forward<_R>(__r)));
+  // Elide `noop` only when the other side is already an stf policy. A bare lambda (or
+  // `std::ignore`) is not: `noop & effect` must stay a tagged composite so that a further
+  // `& next` still finds this operator -- that is why `noop` heads chains of plain effects.
+  if constexpr (::cuda::std::is_same_v<::cuda::std::remove_cvref_t<_L>, noop_t> && detail::__is_stf_policy_v<_R>)
+  {
+    return detail::__normalize(::cuda::std::forward<_R>(__r));
+  }
+  else if constexpr (::cuda::std::is_same_v<::cuda::std::remove_cvref_t<_R>, noop_t> && detail::__is_stf_policy_v<_L>)
+  {
+    return detail::__normalize(::cuda::std::forward<_L>(__l));
+  }
+  else
+  {
+    return detail::__make_and(detail::__normalize(::cuda::std::forward<_L>(__l)),
+                              detail::__normalize(::cuda::std::forward<_R>(__r)));
+  }
 }
 
 /**
@@ -1090,8 +1097,20 @@ template <class _L,
           ::cuda::std::enable_if_t<detail::__is_stf_policy_v<_L> || detail::__is_stf_policy_v<_R>, int> = 0>
 auto operator|(_L&& __l, _R&& __r)
 {
-  return detail::__make_or(detail::__normalize(::cuda::std::forward<_L>(__l)),
-                           detail::__normalize(::cuda::std::forward<_R>(__r)));
+  // Same elision rule as `&`: only drop `rethrow` when the survivor is already tagged.
+  if constexpr (::cuda::std::is_same_v<::cuda::std::remove_cvref_t<_L>, rethrow_t> && detail::__is_stf_policy_v<_R>)
+  {
+    return detail::__normalize(::cuda::std::forward<_R>(__r));
+  }
+  else if constexpr (::cuda::std::is_same_v<::cuda::std::remove_cvref_t<_R>, rethrow_t> && detail::__is_stf_policy_v<_L>)
+  {
+    return detail::__normalize(::cuda::std::forward<_L>(__l));
+  }
+  else
+  {
+    return detail::__make_or(detail::__normalize(::cuda::std::forward<_L>(__l)),
+                             detail::__normalize(::cuda::std::forward<_R>(__r)));
+  }
 }
 
 #ifdef UNITTESTED_FILE
