@@ -276,7 +276,7 @@ struct subst_t
   using __stf_policy_tag = void;
   //! @endcond
 
-  _V __v_;
+  _CCCL_NO_UNIQUE_ADDRESS _V __v_;
 
   decltype(auto) operator()([[maybe_unused]] const ::std::exception* __exception,
                             [[maybe_unused]] const ::cuda::std::source_location __loc) noexcept
@@ -505,7 +505,7 @@ template <class _Action>
 struct __terminating_action
 {
   using __stf_policy_tag = void;
-  _Action __action_;
+  _CCCL_NO_UNIQUE_ADDRESS _Action __action_;
 
   [[noreturn]] nothing operator()(const ::std::exception* __exception, const ::cuda::std::source_location __loc) noexcept
   {
@@ -531,7 +531,7 @@ template <class _E, class _P>
 struct __catch_only_t
 {
   using __stf_policy_tag = void;
-  _P __p_;
+  _CCCL_NO_UNIQUE_ADDRESS _P __p_;
 
   decltype(auto) operator()(const ::std::exception* __exception, const ::cuda::std::source_location __loc)
   {
@@ -591,8 +591,8 @@ template <class _L, class _R>
 struct __policy_and
 {
   using __stf_policy_tag = void;
-  _L __l_;
-  _R __r_;
+  _CCCL_NO_UNIQUE_ADDRESS _L __l_;
+  _CCCL_NO_UNIQUE_ADDRESS _R __r_;
 
   static_assert(!__answers_nothing<_L>, "policies after a never-returning policy are unreachable");
 
@@ -683,8 +683,8 @@ template <class _L, class _R>
 struct __policy_or
 {
   using __stf_policy_tag = void;
-  _L __l_;
-  _R __r_;
+  _CCCL_NO_UNIQUE_ADDRESS _L __l_;
+  _CCCL_NO_UNIQUE_ADDRESS _R __r_;
 
   static_assert(__has_exception_hook<_L> && __has_exception_hook<_R>,
                 "both sides of | must answer the exception path (have an exception hook)");
@@ -852,7 +852,7 @@ _Expr __on_exception(_P& __policy, const ::std::exception* __exception, const ::
 template <class _Reaction>
 struct __on_throw_policy
 {
-  _Reaction __reaction_;
+  _CCCL_NO_UNIQUE_ADDRESS _Reaction __reaction_;
   const ::cuda::std::source_location __loc_;
 };
 
