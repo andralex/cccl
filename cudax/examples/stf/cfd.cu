@@ -34,9 +34,16 @@ double gettime()
 void writeplotfile(int m, int n, int scale)
 {
   FILE* gnuplot = EXPECT(fopen("cfd.plt", "w"));
-  SCOPE(exit)
+  // The two exits differ: on the normal path a failed close is a real error and EXPECT may
+  // throw from SCOPE(success); on the exception path the file is closed best effort, because
+  // a SCOPE(fail) body that throws aborts the program instead of reporting the original error.
+  SCOPE(success)
   {
     EXPECT(fclose(gnuplot) == 0);
+  };
+  SCOPE(fail)
+  {
+    fclose(gnuplot);
   };
 
   fprintf(gnuplot,

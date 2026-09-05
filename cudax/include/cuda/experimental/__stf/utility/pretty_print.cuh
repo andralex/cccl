@@ -102,9 +102,15 @@ void mdspan_to_vtk(mdspan_like s, const ::std::string& filename)
 {
   fprintf(stderr, "Writing slice of size to file %s\n", filename.c_str());
   FILE* f = EXPECT(fopen(filename.c_str(), "w+") != nullptr);
-  SCOPE(exit)
+  // A checked close belongs on the normal path, where EXPECT may throw; on the exception path
+  // the file is closed best effort, since a throwing guard body aborts the program.
+  SCOPE(success)
   {
     EXPECT(fclose(f) != -1);
+  };
+  SCOPE(fail)
+  {
+    fclose(f);
   };
 
   EXPECT(fprintf(f, "# vtk DataFile Version 2.0\noutput\nASCII\n") != -1);

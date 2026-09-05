@@ -1169,7 +1169,19 @@ public:
     // For stream contexts, delete immediately in callback (better memory efficiency)
     if constexpr (::cuda::std::is_same_v<context, graph_ctx>)
     {
+      // `args` is owned by nobody until the resource below adopts it, and make_shared can
+      // throw. The stream path has its own guard around the enqueue further down; keeping
+      // this one confined to the graph branch avoids a double free when both could fire.
+      bool args_adopted = false;
+      SCOPE(fail)
+      {
+        if (!args_adopted)
+        {
+          delete args;
+        }
+      };
       auto resource = ::std::make_shared<parallel_for_args_resource<args_t>>(args);
+      args_adopted  = true; // the resource owns `args` from here on
       ctx.add_resource(mv(resource));
     }
 
