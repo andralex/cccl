@@ -2003,58 +2003,29 @@ struct __policy_and : __composite_hooks<_L, _R>
                 "the left side of & chooses a value (subst, as_expected, defer, retry, a converter) that & would "
                 "discard or override; put the value-producing policy on the right, or use | for a fallback");
 
-  // Present iff either side has a hook. `_L` fires, then `_R`; the last answer given decides:
-  // `_R`'s unless `_R` answers `void` (an effect only) or has no hook, in which case `_L`'s
-  // stands (at most the resume tag, since `_L` cannot choose a value). A chain whose answer is
-  // `void` is rejected by `__interpret_answer` in final position, since it cannot answer alone.
+  // Present iff either side has a hook. `_L` fires for its effect (it cannot choose a value, see
+  // the assertion above), then `_R` answers; `_R`'s answer is the composite's. With no `_R` hook
+  // the composite answers `void`, an effect only, which `__interpret_answer` resumes with the
+  // default when it is the whole policy.
   template <class _Fn,
             class _LL                                                                             = _L,
             class _RR                                                                             = _R,
             ::cuda::std::enable_if_t<__has_exception_hook<_LL> || __has_exception_hook<_RR>, int> = 0>
   decltype(auto) operator()(const ::std::exception* __exception, const ::cuda::std::source_location __loc, _Fn& __fn)
   {
-    if constexpr (!__has_exception_hook<_R>)
+    if constexpr (__has_exception_hook<_L>)
     {
-      return this->__l_(__exception, __loc, __fn);
+      static_cast<void>(this->__l_(__exception, __loc, __fn)); // an effect; the right decides
     }
-    else if constexpr (::cuda::std::is_void_v<__hook_answer_t<_R, _Fn>>)
+    if constexpr (__has_exception_hook<_R>)
     {
-      // The right side only has an effect: the left's answer stands.
-      if constexpr (!__has_exception_hook<_L> || ::cuda::std::is_void_v<__hook_answer_t<_L, _Fn>>)
-      {
-        if constexpr (__has_exception_hook<_L>)
-        {
-          this->__l_(__exception, __loc, __fn);
-        }
-        this->__r_(__exception, __loc, __fn);
-      }
-      else if constexpr (::cuda::std::is_same_v<::cuda::std::remove_cvref_t<__hook_answer_t<_L, _Fn>>, nullval>)
-      {
-        this->__l_(__exception, __loc, __fn); // never returns (a selector declining this channel)
-        _CCCL_UNREACHABLE();
-      }
-      else
-      {
-        auto __answer = this->__l_(__exception, __loc, __fn); // the resume tag
-        this->__r_(__exception, __loc, __fn);
-        return __answer;
-      }
-    }
-    else
-    {
-      if constexpr (__has_exception_hook<_L>)
-      {
-        static_cast<void>(this->__l_(__exception, __loc, __fn)); // the right decides
-      }
       return this->__r_(__exception, __loc, __fn);
     }
   }
 
   // The code channel, as on the exception channel: `_L` runs first, and a status it passes
   // through leaves the composite without reaching `_R` (which is what makes `when(gate, p)` a
-  // gate); otherwise `_R` answers. Since `_L` cannot choose a value, its handled answer is the
-  // success status, which is also what an effect-only `_R` yields, so "the last answer given
-  // decides" needs no second branch here. A throw from either side ends the matter.
+  // gate); otherwise `_R` answers. A throw from either side ends the matter.
   template <
     class _Status,
     class _Fn,
@@ -2533,9 +2504,6 @@ _Expr __interpret_answer(
   _P& __policy, const ::std::exception* __exception, const ::cuda::std::source_location __loc, _Fn& __fn)
 {
   using _Answer = __hook_answer_t<_P, _Fn>;
-  static_assert(!::cuda::std::is_void_v<_Answer>,
-                "the final policy must answer the exception path: nullval to die, ::std::ignore "
-                "to resume, or a value to substitute");
 
   if constexpr (::cuda::std::is_same_v<::cuda::std::remove_cvref_t<_Answer>, nullval>)
   {
@@ -2543,10 +2511,19 @@ _Expr __interpret_answer(
     __policy(__exception, __loc, __fn);
     _CCCL_UNREACHABLE();
   }
-  else if constexpr (__is_ignore_v<_Answer>)
+  else if constexpr (::cuda::std::is_void_v<_Answer> || __is_ignore_v<_Answer>)
   {
-    // Resume: default-construct the expression's value (nothing to do for void).
-    static_cast<void>(__policy(__exception, __loc, __fn));
+    // Resume: default-construct the expression's value (nothing to do for void). A `void`
+    // answer, an effect only, resumes the same way when it is the whole policy:
+    // `errsink(store(&e)) << f` keeps the failure and goes on.
+    if constexpr (::cuda::std::is_void_v<_Answer>)
+    {
+      __policy(__exception, __loc, __fn);
+    }
+    else
+    {
+      static_cast<void>(__policy(__exception, __loc, __fn));
+    }
     if constexpr (!::cuda::std::is_void_v<_Expr>)
     {
       static_assert(!::cuda::std::is_reference_v<_Expr>,
@@ -5997,6 +5974,21 @@ UNITTEST("store")
   using namespace cuda::experimental::stf;
   using namespace cuda::experimental::stf::eh;
 #  if _CCCL_HAS_EXCEPTIONS()
+  // store alone: an effect-only policy as the whole sink keeps the failure and resumes with the
+  // default value (the statement form goes on; the yielding form yields T{}).
+  {
+    ::std::exception_ptr kept;
+    const int v = errsink(store(&kept))->*[]() -> int {
+      throw ::std::runtime_error("kept");
+    };
+    EXPECT(v == 0);
+    EXPECT(!!kept);
+    kept = nullptr;
+    errsink(store(&kept)) << [] {
+      throw ::std::runtime_error("kept again");
+    };
+    EXPECT(!!kept);
+  }
   // exception_ptr target: the deferred-rethrow pattern, full fidelity.
   {
     ::std::exception_ptr last;
