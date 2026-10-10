@@ -1308,8 +1308,10 @@ inline constexpr bool __store_may_decline<::std::shared_ptr<_E>> = ::cuda::std::
  *   copy assignment throws, the store forwards the ORIGINAL exception, never with its
  *   own bookkeeping failure.
  *
- * The hook answers `void`: store is an `&` citizen and an `always` finalizer, never a
- * final answer. The `exception_ptr`, span, and string variants are `noexcept`, so the
+ * The hook answers `std::ignore`: store decides to keep the failure and resume with the
+ * default, so it stands alone (`errsink(store(&e)) << f`) and, since the resume tag is not a
+ * value, it also stands on the left of `&` and as an `always` finalizer. The
+ * `exception_ptr`, span, and string variants are `noexcept`, so the
  * alternation dead-arm theorem correctly rejects them as non-final `|` arms; the typed
  * variant may forward and composes there deliberately.
  *
@@ -1329,8 +1331,9 @@ struct store_t
   _Target __target_;
 
   template <class _Fn>
-  void operator()([[maybe_unused]] const ::std::exception* __e, const ::cuda::std::source_location, _Fn&) noexcept(
-    !detail::__store_may_decline<_Target>)
+  decltype(::std::ignore) operator()([[maybe_unused]] const ::std::exception* __e,
+                                     const ::cuda::std::source_location,
+                                     _Fn&) noexcept(!detail::__store_may_decline<_Target>)
   {
     if constexpr (::cuda::std::is_same_v<_Target, ::cuda::std::span<char>>)
     {
@@ -1386,6 +1389,7 @@ struct store_t
         }
       }
     }
+    return ::std::ignore;
   }
 
   //! @brief The code-channel hook for the targets that never forward: an `exception_ptr`
@@ -1397,7 +1401,8 @@ struct store_t
             class _Self                                                        = _Target,
             ::cuda::std::enable_if_t<!detail::__store_may_decline<_Self>, int> = 0>
   // maybe_unused: only the exception_ptr target reads the location; gcc 9 flags the others.
-  void handle(const _Status __status, [[maybe_unused]] const ::cuda::std::source_location __loc, _Fn&) noexcept
+  decltype(::std::ignore)
+  handle(const _Status __status, [[maybe_unused]] const ::cuda::std::source_location __loc, _Fn&) noexcept
   {
     if constexpr (::cuda::std::is_same_v<_Target, ::cuda::std::span<char>>)
     {
@@ -1440,6 +1445,7 @@ struct store_t
         }
       }
     }
+    return ::std::ignore;
   }
 };
 
@@ -2005,8 +2011,8 @@ struct __policy_and : __composite_hooks<_L, _R>
 
   // Present iff either side has a hook. `_L` fires for its effect (it cannot choose a value, see
   // the assertion above), then `_R` answers; `_R`'s answer is the composite's. With no `_R` hook
-  // the composite answers `void`, an effect only, which `__interpret_answer` resumes with the
-  // default when it is the whole policy.
+  // the composite answers `void`: no decision yet, which `__interpret_answer` rejects in final
+  // position.
   template <class _Fn,
             class _LL                                                                             = _L,
             class _RR                                                                             = _R,
@@ -2504,6 +2510,9 @@ _Expr __interpret_answer(
   _P& __policy, const ::std::exception* __exception, const ::cuda::std::source_location __loc, _Fn& __fn)
 {
   using _Answer = __hook_answer_t<_P, _Fn>;
+  static_assert(!::cuda::std::is_void_v<_Answer>,
+                "the final policy answers void, that is, it makes no decision; follow it with one that "
+                "decides (notify & subst(1)), or answer ::std::ignore to resume with the default");
 
   if constexpr (::cuda::std::is_same_v<::cuda::std::remove_cvref_t<_Answer>, nullval>)
   {
@@ -2511,19 +2520,10 @@ _Expr __interpret_answer(
     __policy(__exception, __loc, __fn);
     _CCCL_UNREACHABLE();
   }
-  else if constexpr (::cuda::std::is_void_v<_Answer> || __is_ignore_v<_Answer>)
+  else if constexpr (__is_ignore_v<_Answer>)
   {
-    // Resume: default-construct the expression's value (nothing to do for void). A `void`
-    // answer, an effect only, resumes the same way when it is the whole policy:
-    // `errsink(store(&e)) << f` keeps the failure and goes on.
-    if constexpr (::cuda::std::is_void_v<_Answer>)
-    {
-      __policy(__exception, __loc, __fn);
-    }
-    else
-    {
-      static_cast<void>(__policy(__exception, __loc, __fn));
-    }
+    // Resume: default-construct the expression's value (nothing to do for void).
+    static_cast<void>(__policy(__exception, __loc, __fn));
     if constexpr (!::cuda::std::is_void_v<_Expr>)
     {
       static_assert(!::cuda::std::is_reference_v<_Expr>,
@@ -5974,8 +5974,8 @@ UNITTEST("store")
   using namespace cuda::experimental::stf;
   using namespace cuda::experimental::stf::eh;
 #  if _CCCL_HAS_EXCEPTIONS()
-  // store alone: an effect-only policy as the whole sink keeps the failure and resumes with the
-  // default value (the statement form goes on; the yielding form yields T{}).
+  // store alone: it answers the resume tag, so as the whole sink it keeps the failure and
+  // resumes with the default value (the statement form goes on; the yielding form yields T{}).
   {
     ::std::exception_ptr kept;
     const int v = errsink(store(&kept))->*[]() -> int {
