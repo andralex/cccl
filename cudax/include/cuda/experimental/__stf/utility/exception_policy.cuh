@@ -296,17 +296,16 @@ struct notify_t
   //! else `__file_` (default `stderr`). The ostream write is best-effort: a stream configured
   //! to throw does not get to end the program from inside a handler.
   template <class _Fn>
-  decltype(::std::ignore)
-  operator()(const ::std::exception* __exception, const ::cuda::std::source_location __loc, _Fn&) const noexcept
+  void operator()(const ::std::exception* __exception, const ::cuda::std::source_location __loc, _Fn&) const noexcept
   {
     __report(__exception ? __exception->what() : "nonstandard exception", __loc);
-    return ::std::ignore;
   }
 
-  //! @brief The code-channel hook: reports `status_traits<_Status>::name(__status)` and resumes.
+  //! @brief The code-channel hook: reports `status_traits<_Status>::name(__status)`; the status is
+  //! handled and left unchanged.
   //! A name that cannot be formatted (its allocation failed) is reported as such.
   template <class _Status, class _Fn>
-  decltype(::std::ignore) handle(const _Status __status, const ::cuda::std::source_location __loc, _Fn&) const noexcept
+  void handle(const _Status __status, const ::cuda::std::source_location __loc, _Fn&) const noexcept
   {
     _CCCL_TRY
     {
@@ -317,7 +316,6 @@ struct notify_t
     {
       __report("status whose name could not be formatted", __loc);
     }
-    return ::std::ignore;
   }
 
 private:
@@ -411,7 +409,8 @@ inline constexpr terminate_t terminate{};
 /**
  * @brief The identity element of `&`: a policy with no capabilities at all.
  *
- * `noop & p` and `p & noop` both behave as `p`. Its use is to head a chain so that every
+ * `noop & p` and `p & noop` both behave as `p`; on its own, `noop` does nothing and the
+ * operation goes on. Its use is also to head a chain so that every
  * binary application contains a policy this header defines, as in `noop & effect1 & effect2`,
  * since a chain of plain lambdas is not itself composable.
  */
@@ -421,9 +420,14 @@ struct noop_t
   using __exception_sink_tag = void;
   //! @endcond
 
+  //! @brief The exception hook: do nothing, decide nothing (Nothing). As the whole policy the
+  //! expression takes its default value.
+  template <class _Fn>
+  void operator()(const ::std::exception*, const ::cuda::std::source_location, _Fn&) const noexcept
+  {}
+
   //! @brief The code-channel hook: "keep". The status is handled and yielded unchanged, so a `|`
-  //! stops here: `when_equal(cudaErrorNotReady)(noop) | unwind` yields the not-ready code. On the
-  //! exception channel `noop` has no hook, which keeps it the identity of `&`.
+  //! stops here: `when_equal(cudaErrorNotReady)(noop) | unwind` yields the not-ready code.
   template <class _Status, class _Fn>
   detail::__status_answer<_Status>
   handle(const _Status __status, const ::cuda::std::source_location, _Fn&) const noexcept
@@ -863,7 +867,7 @@ struct when_t
   {
     if (__pred_())
     {
-      return {status_traits<_Status>::success(), false};
+      return {__status, false};
     }
     return {__status, true};
   }
@@ -1241,10 +1245,9 @@ struct circuit_breaker_t
 
   //! @brief The exception hook: record the failure, answer as an effect.
   template <class _Fn>
-  decltype(::std::ignore) operator()(const ::std::exception*, const ::cuda::std::source_location, _Fn&) const noexcept
+  void operator()(const ::std::exception*, const ::cuda::std::source_location, _Fn&) const noexcept
   {
     --*__budget_;
-    return ::std::ignore;
   }
 
   //! @brief Success restores the budget to its creation-time value.
@@ -1308,10 +1311,10 @@ inline constexpr bool __store_may_decline<::std::shared_ptr<_E>> = ::cuda::std::
  *   copy assignment throws, the store forwards the ORIGINAL exception, never with its
  *   own bookkeeping failure.
  *
- * The hook answers `std::ignore`: store decides to keep the failure and resume with the
- * default, so it stands alone (`errsink(store(&e)) << f`) and, since the resume tag is not a
- * value, it also stands on the left of `&` and as an `always` finalizer. The
- * `exception_ptr`, span, and string variants are `noexcept`, so the
+ * The hook answers `void`, Nothing: store has its effect and makes no decision, so it stands
+ * on the left of `&`, as an `always` finalizer, and on its own (`errsink(store(&e)) << f`
+ * keeps the failure and goes on). The `exception_ptr`, span, and string variants are
+ * `noexcept`, so the
  * alternation dead-arm theorem correctly rejects them as non-final `|` arms; the typed
  * variant may forward and composes there deliberately.
  *
@@ -1331,9 +1334,8 @@ struct store_t
   _Target __target_;
 
   template <class _Fn>
-  decltype(::std::ignore) operator()([[maybe_unused]] const ::std::exception* __e,
-                                     const ::cuda::std::source_location,
-                                     _Fn&) noexcept(!detail::__store_may_decline<_Target>)
+  void operator()([[maybe_unused]] const ::std::exception* __e, const ::cuda::std::source_location, _Fn&) noexcept(
+    !detail::__store_may_decline<_Target>)
   {
     if constexpr (::cuda::std::is_same_v<_Target, ::cuda::std::span<char>>)
     {
@@ -1389,7 +1391,6 @@ struct store_t
         }
       }
     }
-    return ::std::ignore;
   }
 
   //! @brief The code-channel hook for the targets that never forward: an `exception_ptr`
@@ -1401,8 +1402,7 @@ struct store_t
             class _Self                                                        = _Target,
             ::cuda::std::enable_if_t<!detail::__store_may_decline<_Self>, int> = 0>
   // maybe_unused: only the exception_ptr target reads the location; gcc 9 flags the others.
-  decltype(::std::ignore)
-  handle(const _Status __status, [[maybe_unused]] const ::cuda::std::source_location __loc, _Fn&) noexcept
+  void handle(const _Status __status, [[maybe_unused]] const ::cuda::std::source_location __loc, _Fn&) noexcept
   {
     if constexpr (::cuda::std::is_same_v<_Target, ::cuda::std::span<char>>)
     {
@@ -1445,7 +1445,6 @@ struct store_t
         }
       }
     }
-    return ::std::ignore;
   }
 };
 
@@ -1684,29 +1683,6 @@ __offer_status(_P& __policy, _Status __status, ::cuda::std::source_location __lo
 
 // --- Adapters: normalize the historical reactions into policies ----------------------------
 
-// `::std::ignore` as a policy: resume with a default-constructed result. Resume is
-// polymorphic substitution of the default: on non-void callables this policy is equivalent to
-// `subst([](auto*, auto, auto& fn) { return decltype(fn())(); })`; the marker exists because a
-// void expression has no value to substitute, yet "resumed" and "merely an effect" must stay
-// distinguishable answers.
-struct __ignore_policy
-{
-  using __exception_sink_tag = void;
-
-  template <class _Fn>
-  decltype(::std::ignore) operator()(const ::std::exception*, const ::cuda::std::source_location, _Fn&) const noexcept
-  {
-    return ::std::ignore;
-  }
-
-  // On the code channel resuming yields `status_traits<S>::success()`, never `S{}`.
-  template <class _Status, class _Fn>
-  decltype(::std::ignore) handle(const _Status, const ::cuda::std::source_location, _Fn&) const noexcept
-  {
-    return ::std::ignore;
-  }
-};
-
 // Success-hook forwarding shared by the single-policy wrappers (`__when_is_a_t`,
 // `__as_policy`, `__policy_pow`): both arities delegate to the wrapped policy. The outer
 // `operator<<` enforces that the forwarded answer preserves the callable's expression type.
@@ -1921,10 +1897,6 @@ auto __normalize(_R&& __r)
     // Raw callable with a capability: tag it so identity elimination and &/| stay ADL-findable.
     return __as_policy<_R>{::cuda::std::forward<_R>(__r)};
   }
-  else if constexpr (__is_ignore_v<_P>)
-  {
-    return __ignore_policy{};
-  }
   else
   {
     return subst_t<_R>{::cuda::std::forward<_R>(__r)};
@@ -2011,8 +1983,7 @@ struct __policy_and : __composite_hooks<_L, _R>
 
   // Present iff either side has a hook. `_L` fires for its effect (it cannot choose a value, see
   // the assertion above), then `_R` answers; `_R`'s answer is the composite's. With no `_R` hook
-  // the composite answers `void`: no decision yet, which `__interpret_answer` rejects in final
-  // position.
+  // the composite answers `void`, Nothing, which as the whole policy resumes with the default.
   template <class _Fn,
             class _LL                                                                             = _L,
             class _RR                                                                             = _R,
@@ -2395,9 +2366,10 @@ __status_answer<_Status> __interpret_status([[maybe_unused]] const _Status __sta
   }
   else if constexpr (::cuda::std::is_void_v<_Answer> || __is_ignore_v<_Answer>)
   {
-    // Resume or effect: the status is handled, and a handled status yields success.
+    // Nothing: the status is handled and left unchanged (`subst(success)` is the spelling for
+    // mapping it to success).
     static_cast<void>(__call());
-    return {status_traits<_Status>::success(), false};
+    return {__status, false};
   }
   else if constexpr (::cuda::std::is_same_v<_A, fwd_t>)
   {
@@ -2510,9 +2482,6 @@ _Expr __interpret_answer(
   _P& __policy, const ::std::exception* __exception, const ::cuda::std::source_location __loc, _Fn& __fn)
 {
   using _Answer = __hook_answer_t<_P, _Fn>;
-  static_assert(!::cuda::std::is_void_v<_Answer>,
-                "the final policy answers void, that is, it makes no decision; follow it with one that "
-                "decides (notify & subst(1)), or answer ::std::ignore to resume with the default");
 
   if constexpr (::cuda::std::is_same_v<::cuda::std::remove_cvref_t<_Answer>, nullval>)
   {
@@ -2520,10 +2489,18 @@ _Expr __interpret_answer(
     __policy(__exception, __loc, __fn);
     _CCCL_UNREACHABLE();
   }
-  else if constexpr (__is_ignore_v<_Answer>)
+  else if constexpr (::cuda::std::is_void_v<_Answer> || __is_ignore_v<_Answer>)
   {
-    // Resume: default-construct the expression's value (nothing to do for void).
-    static_cast<void>(__policy(__exception, __loc, __fn));
+    // Nothing (a void hook: the effect ran, no decision) or a completed void expression: the
+    // expression takes its default value.
+    if constexpr (::cuda::std::is_void_v<_Answer>)
+    {
+      __policy(__exception, __loc, __fn);
+    }
+    else
+    {
+      static_cast<void>(__policy(__exception, __loc, __fn));
+    }
     if constexpr (!::cuda::std::is_void_v<_Expr>)
     {
       static_assert(!::cuda::std::is_reference_v<_Expr>,
@@ -2546,8 +2523,8 @@ _Expr __interpret_answer(
       "type, anything else dying with the call");
     static_assert(::cuda::std::is_convertible_v<_Answer, _Expr>,
                   "an errsink reaction is a policy, a never-returning callable (one returning "
-                  "nullval, like abort and terminate), ::std::ignore, or a value convertible to "
-                  "the result of the callable");
+                  "nullval, like abort and terminate), or a value convertible to the result of "
+                  "the callable");
     static_assert(__value_preserving_v<_Answer, _Expr>,
                   "the policy's answer does not preserve the callable's value range (for example "
                   "an int answer under an unsigned result); write the conversion in the policy -- "
@@ -3253,7 +3230,7 @@ inline constexpr bool __selects_returned_v<__returned_fn_t<_F, _S>> = true;
 // (a converter).
 template <class _X>
 inline constexpr bool __is_policy_argument_v =
-  __is_exception_sink_v<_X> || __has_any_capability<::cuda::std::remove_cvref_t<_X>> || __is_ignore_v<_X>;
+  __is_exception_sink_v<_X> || __has_any_capability<::cuda::std::remove_cvref_t<_X>>;
 } // namespace detail
 #endif // !_CCCL_DOXYGEN_INVOKED
 
@@ -3335,7 +3312,7 @@ auto when_equal(const _Status __first, const _More... __more)
  *
  * Given a function, `thrown<E>(f)` converts: for an exception matching `E` by catch-clause
  * rules (same or publicly derived), the answer is `f(e)`, with `e` the caught `const E&`;
- * anything else forwards. A value substitutes, `std::ignore` resumes, `nullval` never
+ * anything else forwards. A value substitutes, `void` is Nothing, `nullval` never
  * returns, and a throw from `f` replaces the exception. `E` defaults to `std::exception`:
  * @code
  * thrown<cuda_exception>([](const cuda_exception& e) { return e.status<cudaError_t>(); })
@@ -3371,7 +3348,7 @@ auto thrown(_X&& __x)
  *
  * Given a function, `returned<S>(f)` converts: for a failing status of type `S`, the answer is
  * `f(s)`; statuses of other types and exceptions forward. The answer follows the same
- * protocol as everywhere: a value of type `S` substitutes, `std::ignore` resumes, `nullval`
+ * protocol as everywhere: a value of type `S` substitutes, `void` is Nothing, `nullval`
  * never returns, and a throw from `f` turns the status into that exception:
  * @code
  * returned<cudaError_t>([](cudaError_t s) -> cudaError_t { throw std::runtime_error(cudaGetErrorName(s)); })
@@ -4758,11 +4735,11 @@ UNITTEST("errsink")
   };
   EXPECT(&supplanted == &fallback);
 
-  const int ignored = errsink(::std::ignore)->*[]() -> int {
+  const int ignored = errsink(noop)->*[]() -> int {
     throw ::std::runtime_error("ignored");
   };
   EXPECT(ignored == 0);
-  errsink(::std::ignore)->*[] {
+  errsink(noop)->*[] {
     throw 42;
   };
 
@@ -5295,10 +5272,10 @@ UNITTEST("re-running policies")
     EXPECT(calls == 3);
   }
 
-  // A plain ignore-arm after retry resumes with a default-constructed result.
+  // A plain noop arm after retry: Nothing, so the expression takes its default value.
   {
     int calls   = 0;
-    const int v = errsink(retry | ::std::ignore)->*[&]() -> int {
+    const int v = errsink(retry | noop)->*[&]() -> int {
       ++calls;
       throw ::std::runtime_error("always");
     };
@@ -5974,8 +5951,8 @@ UNITTEST("store")
   using namespace cuda::experimental::stf;
   using namespace cuda::experimental::stf::eh;
 #  if _CCCL_HAS_EXCEPTIONS()
-  // store alone: it answers the resume tag, so as the whole sink it keeps the failure and
-  // resumes with the default value (the statement form goes on; the yielding form yields T{}).
+  // store alone: Nothing as the whole sink keeps the failure and the operation goes on (the
+  // yielding form yields T{}).
   {
     ::std::exception_ptr kept;
     const int v = errsink(store(&kept))->*[]() -> int {
@@ -6216,14 +6193,14 @@ UNITTEST("type erasure")
   // Resume / effects: exempt from the type check. Resume over void is legal.
   {
     int hits = 0;
-    errsink(type_erase(::std::ignore))->*[&]() -> void {
+    errsink(type_erase(noop))->*[&]() -> void {
       ++hits;
       throw ::std::runtime_error("x");
     };
     EXPECT(hits == 1);
   }
   {
-    const int x = errsink(type_erase(::std::ignore))->*[]() -> int {
+    const int x = errsink(type_erase(noop))->*[]() -> int {
       throw ::std::runtime_error("x");
     };
     EXPECT(x == 0);
@@ -6232,10 +6209,10 @@ UNITTEST("type erasure")
   EXPECT(type_erase(retry * 3).kind() == exception_sink::answer_kind::own_result);
   EXPECT(type_erase(subst(9)).kind() == exception_sink::answer_kind::integral);
   EXPECT(type_erase(subst(1.5)).kind() == exception_sink::answer_kind::floating);
-  EXPECT(type_erase(::std::ignore).kind() == exception_sink::answer_kind::resumes);
+  EXPECT(type_erase(noop).kind() == exception_sink::answer_kind::effects);
   EXPECT((type_erase(translate<::std::runtime_error, ::std::logic_error>).kind() == exception_sink::answer_kind::dies));
   EXPECT(type_erase(retry * 3).may_passthrough());
-  EXPECT(!type_erase(::std::ignore).may_passthrough());
+  EXPECT(!type_erase(noop).may_passthrough());
   // Re-erasure: fwd composite; first-throw unbox is the backstop.
   {
     const int x = errsink(type_erase(type_erase(subst(5))))->*[]() -> int {
@@ -6648,10 +6625,10 @@ UNITTEST("error sinks: notify on a code handles it without throwing")
   using namespace cuda::experimental::stf::eh;
   ::std::ostringstream log;
   auto r = errsink(notify(log))->*cudaErrorInvalidValue;
-  EXPECT(r == cudaSuccess);
+  EXPECT(r == cudaErrorInvalidValue); // handled (reported), left unchanged
   EXPECT(log.str().find("cudaErrorInvalidValue") != ::std::string::npos);
   auto d = errsink(notify(log))->*CUDA_ERROR_INVALID_VALUE;
-  EXPECT(d == CUDA_SUCCESS);
+  EXPECT(d == CUDA_ERROR_INVALID_VALUE);
   using carrier = decltype(errsink(notify(log)));
   static_assert(noexcept(::cuda::std::declval<carrier>()->*::cuda::std::declval<cudaError_t>()),
                 "a never-passing-through policy on a code operand is noexcept");
@@ -6735,7 +6712,7 @@ UNITTEST("error sinks: store on a code stores the trait's exception")
   using namespace cuda::experimental::stf::eh;
   ::std::exception_ptr err;
   auto r = errsink(store(&err))->*cudaErrorInvalidValue;
-  EXPECT(r == cudaSuccess);
+  EXPECT(r == cudaErrorInvalidValue); // handled (stored), left unchanged
   EXPECT(static_cast<bool>(err));
   bool typed = false;
   try
@@ -7162,18 +7139,19 @@ UNITTEST("error sinks: composites and the bridge on a code")
   ::std::string note;
   EXPECT((errsink(always(fwd, store(&note)))->*cudaErrorInvalidValue) == cudaErrorInvalidValue);
   EXPECT(note.find("cudaErrorInvalidValue") != ::std::string::npos);
-  // Resuming yields the trait's success value; a nullary guard gates the sequence.
-  EXPECT((errsink(::std::ignore)->*CUDA_ERROR_NOT_READY) == CUDA_SUCCESS);
+  // Nothing leaves the status unchanged; a nullary guard gates the sequence, and whether the
+  // status was handled or passed through shows in the chain.
+  EXPECT((errsink(noop)->*CUDA_ERROR_NOT_READY) == CUDA_ERROR_NOT_READY);
   bool open       = false;
   const auto gate = [&] {
     return open;
   };
-  EXPECT((errsink(when(gate, ::std::ignore) | fwd)->*cudaErrorInvalidValue) == cudaErrorInvalidValue);
+  EXPECT((errsink(when(gate, noop) | fwd) << cudaErrorInvalidValue).forwarded());
   open = true;
-  EXPECT((errsink(when(gate, ::std::ignore) | fwd)->*cudaErrorInvalidValue) == cudaSuccess);
+  EXPECT(!(errsink(when(gate, noop) | fwd) << cudaErrorInvalidValue).forwarded());
   // The text targets of store take the trait's name, allocation-bounded for a span.
   char buffer[64]{};
-  EXPECT((errsink(store(::cuda::std::span<char>(buffer)))->*cudaErrorInvalidValue) == cudaSuccess);
+  EXPECT((errsink(store(::cuda::std::span<char>(buffer)))->*cudaErrorInvalidValue) == cudaErrorInvalidValue);
   EXPECT(::std::string_view{buffer}.find("cudaErrorInvalidValue") != ::std::string_view::npos);
   // A substitution of the status type keeps the code channel noexcept; the bridge does not, since
   // building the exception may throw.

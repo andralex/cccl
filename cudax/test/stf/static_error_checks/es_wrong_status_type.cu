@@ -22,6 +22,6 @@ using namespace cuda::experimental::stf::eh;
 
 int main()
 {
-  errsink(when_equal(cudaErrorNotReady)(::std::ignore))->*CUDA_ERROR_NOT_READY;
+  errsink(when_equal(cudaErrorNotReady)(noop))->*CUDA_ERROR_NOT_READY;
   return EXIT_FAILURE;
 }

@@ -22,6 +22,6 @@ using namespace cuda::experimental::stf::eh;
 
 int main()
 {
-  errsink(when_is_a<::std::bad_alloc>(::std::ignore))->*cudaErrorInvalidValue;
+  errsink(when_is_a<::std::bad_alloc>(noop))->*cudaErrorInvalidValue;
   return EXIT_FAILURE;
 }
