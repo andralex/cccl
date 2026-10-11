@@ -10,7 +10,7 @@
 
 /**
  * @file
- * @brief Static error check: `when_equal` must match a status of the values' own type.
+ * @brief Static error check: `if_equal` must match a status of the values' own type.
  *
  * The values are `cudaError_t`; the operand is a `CUresult`.
  */
@@ -22,6 +22,6 @@ using namespace cuda::experimental::stf::eh;
 
 int main()
 {
-  errsink(when_equal(cudaErrorNotReady)(noop))->*CUDA_ERROR_NOT_READY;
+  errsink(if_equal(cudaErrorNotReady)(noop))->*CUDA_ERROR_NOT_READY;
   return EXIT_FAILURE;
 }

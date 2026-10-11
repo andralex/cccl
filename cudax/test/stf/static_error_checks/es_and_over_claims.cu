@@ -12,7 +12,7 @@
  * @file
  * @brief Static error check: `&` treats only the channels both of its sides treat.
  *
- * On an exception, `when_equal` forwards and `&` stops there, so `thrown(...)` never runs:
+ * On an exception, `if_equal` forwards and `&` stops there, so `thrown(...)` never runs:
  * the composite has no treatment for exceptions although the callable can throw.
  */
 
@@ -25,7 +25,7 @@ void may_throw();
 
 int main()
 {
-  errsink(when_equal(cudaErrorNotReady)(noop) & thrown(noop)) << [&] {
+  errsink(if_equal(cudaErrorNotReady)(noop) & thrown(noop)) << [&] {
     may_throw();
     return cudaErrorNotReady;
   };

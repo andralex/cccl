@@ -427,7 +427,7 @@ struct noop_t
   {}
 
   //! @brief The code-channel hook: "keep". The status is handled and yielded unchanged, so a `|`
-  //! stops here: `when_equal(cudaErrorNotReady)(noop) | unwind` yields the not-ready code.
+  //! stops here: `if_equal(cudaErrorNotReady)(noop) | unwind` yields the not-ready code.
   template <class _Status, class _Fn>
   detail::__status_answer<_Status>
   handle(const _Status __status, const ::cuda::std::source_location, _Fn&) const noexcept
@@ -505,7 +505,7 @@ inline constexpr fwd_t fwd{};
  * `fwd`. On the code channel it throws `status_traits<S>::to_exception(status, loc)`
  * (for CUDA statuses a `cuda_exception`); with exceptions disabled that throw reports and
  * aborts. It never returns, so `unwind & p` is rejected like `abort & p`. The polling idiom
- * `when_equal(cudaErrorNotReady)(noop) | unwind` yields the not-ready code and
+ * `if_equal(cudaErrorNotReady)(noop) | unwind` yields the not-ready code and
  * throws on anything else.
  */
 struct unwind_t
@@ -825,7 +825,7 @@ inline constexpr as_expected_t as_expected{};
  * There is no runtime "nop" answer on the exception path: a hook either accepts or forwards.
  * A true predicate contributes a void effect answer so `&` continues; false forwards by
  * throwing. As a `|` arm this means "not applicable, try the next arm"; inside `&`, false
- * passes the whole sequence through. `when_is_a` remains separate because its typed claims support
+ * passes the whole sequence through. `if_isa` remains separate because its typed claims support
  * the starved-arm theorem, while arbitrary predicates do not.
  */
 template <class _Pred>
@@ -1683,7 +1683,7 @@ __offer_status(_P& __policy, _Status __status, ::cuda::std::source_location __lo
 
 // --- Adapters: normalize the historical reactions into policies ----------------------------
 
-// Success-hook forwarding shared by the single-policy wrappers (`__when_is_a_t`,
+// Success-hook forwarding shared by the single-policy wrappers (`__if_isa_t`,
 // `__as_policy`, `__policy_pow`): both arities delegate to the wrapped policy. The outer
 // `operator<<` enforces that the forwarded answer preserves the callable's expression type.
 template <class _P>
@@ -1721,20 +1721,20 @@ inline constexpr bool __claimed_by_any = (__claims<_As, _B> || ...);
 // Intra-pack subsumption: reject when any listed type claims another (duplicates included).
 // Message names the dead Derived entry.
 template <class...>
-inline constexpr bool __when_is_a_pack_ok = true;
+inline constexpr bool __if_isa_pack_ok = true;
 
 template <class _Head, class... _Tail>
-inline constexpr bool __when_is_a_pack_ok<_Head, _Tail...> =
-  (!__claims<_Head, _Tail> && ...) && (!__claims<_Tail, _Head> && ...) && __when_is_a_pack_ok<_Tail...>;
+inline constexpr bool __if_isa_pack_ok<_Head, _Tail...> =
+  (!__claims<_Head, _Tail> && ...) && (!__claims<_Tail, _Head> && ...) && __if_isa_pack_ok<_Tail...>;
 
-// `when_is_a<E1, E2, ...>(p)`: run `p`'s exception path when the active exception matches ANY
+// `if_isa<E1, E2, ...>(p)`: run `p`'s exception path when the active exception matches ANY
 // listed type by catch-clause rules (same or publicly derived), else decline by rethrowing.
 // The listed types may be anything catchable, std::exception heritage or not; matching is by
 // re-observation, since a pack cannot expand into sibling catch clauses. Native C++ has no
 // multi-type catch clause; this adds expressivity the language lacks. Policy parameter leads
 // so the exception-type pack trails.
 template <class _P, class... _Es>
-struct __when_is_a_t : __forwards_success<_P>
+struct __if_isa_t : __forwards_success<_P>
 {
   using __exception_sink_tag = void;
 
@@ -1806,35 +1806,35 @@ struct __when_is_a_t : __forwards_success<_P>
 };
 
 template <class _P, class... _Es>
-inline constexpr unsigned __domain_v<__when_is_a_t<_P, _Es...>> = __on_thrown & __domain_v<_P>;
+inline constexpr unsigned __domain_v<__if_isa_t<_P, _Es...>> = __on_thrown & __domain_v<_P>;
 template <class _P, class... _Es>
-inline constexpr bool __produces_value_v<__when_is_a_t<_P, _Es...>> = __produces_value_v<_P>;
+inline constexpr bool __produces_value_v<__if_isa_t<_P, _Es...>> = __produces_value_v<_P>;
 template <class _P, class... _Es>
-inline constexpr bool __selects_thrown_v<__when_is_a_t<_P, _Es...>> = true;
+inline constexpr bool __selects_thrown_v<__if_isa_t<_P, _Es...>> = true;
 template <class _P, class... _Es>
-inline constexpr bool __selects_returned_v<__when_is_a_t<_P, _Es...>> = __selects_returned_v<_P>;
+inline constexpr bool __selects_returned_v<__if_isa_t<_P, _Es...>> = __selects_returned_v<_P>;
 
 // Intra-pack duplicates are dead for exact matching; cone relations are fine (Base and
 // Derived may both be listed, each matching only its own dynamic type).
 template <class...>
-inline constexpr bool __when_exactly_pack_ok = true;
+inline constexpr bool __if_monomorphic_pack_ok = true;
 
 template <class _Head, class... _Tail>
-inline constexpr bool __when_exactly_pack_ok<_Head, _Tail...> =
-  (!::cuda::std::is_same_v<_Head, _Tail> && ...) && __when_exactly_pack_ok<_Tail...>;
+inline constexpr bool __if_monomorphic_pack_ok<_Head, _Tail...> =
+  (!::cuda::std::is_same_v<_Head, _Tail> && ...) && __if_monomorphic_pack_ok<_Tail...>;
 
 // Is `_B` textually one of `_As...`? The exact-guard analogue of `__claimed_by_any`.
 template <class _B, class... _As>
 inline constexpr bool __listed_exactly = (::cuda::std::is_same_v<_As, _B> || ...);
 
-// `when_exactly<E1, E2, ...>(p)`: run `p`'s exception path when the active exception's
+// `if_monomorphic<E1, E2, ...>(p)`: run `p`'s exception path when the active exception's
 // DYNAMIC type is exactly one of the listed types, else decline by rethrowing. Monomorphic
-// where `when_is_a` is polymorphic: derived types do not match, so a handler accepts a type
+// where `if_isa` is polymorphic: derived types do not match, so a handler accepts a type
 // without inheriting its cone. Matching reads typeid through the std::exception funnel, so
 // listed types must derive std::exception (enforced by the factory); a non-std active
 // exception (null funnel) always declines.
 template <class _P, class... _Es>
-struct __when_exactly_t : __forwards_success<_P>
+struct __if_monomorphic_t : __forwards_success<_P>
 {
   using __exception_sink_tag = void;
 
@@ -1857,13 +1857,13 @@ struct __when_exactly_t : __forwards_success<_P>
 };
 
 template <class _P, class... _Es>
-inline constexpr unsigned __domain_v<__when_exactly_t<_P, _Es...>> = __on_thrown & __domain_v<_P>;
+inline constexpr unsigned __domain_v<__if_monomorphic_t<_P, _Es...>> = __on_thrown & __domain_v<_P>;
 template <class _P, class... _Es>
-inline constexpr bool __produces_value_v<__when_exactly_t<_P, _Es...>> = __produces_value_v<_P>;
+inline constexpr bool __produces_value_v<__if_monomorphic_t<_P, _Es...>> = __produces_value_v<_P>;
 template <class _P, class... _Es>
-inline constexpr bool __selects_thrown_v<__when_exactly_t<_P, _Es...>> = true;
+inline constexpr bool __selects_thrown_v<__if_monomorphic_t<_P, _Es...>> = true;
 template <class _P, class... _Es>
-inline constexpr bool __selects_returned_v<__when_exactly_t<_P, _Es...>> = __selects_returned_v<_P>;
+inline constexpr bool __selects_returned_v<__if_monomorphic_t<_P, _Es...>> = __selects_returned_v<_P>;
 
 // Tags a raw capability-bearing callable so normal forms are uniformly sink-typed.
 // Forwards every capability it wraps; adds none. Storage follows the `subst_t<_R>`
@@ -2054,7 +2054,7 @@ template <class _Expr, class _P, class _Fn>
 _Expr __interpret_answer(
   _P& __policy, const ::std::exception* __exception, const ::cuda::std::source_location __loc, _Fn& __fn);
 
-// The left arm of `|` provably starves the right when both are when_is_a wrappers, the left's
+// The left arm of `|` provably starves the right when both are if_isa wrappers, the left's
 // guard list claims every type the right lists, and the left's inner policy never declines a
 // claimed exception. Sound and incomplete, like every dead-code theorem here: nested
 // composites and raw guards escape the pattern; an inner policy that can decline (nothrow
@@ -2063,18 +2063,18 @@ template <class _L, class _R>
 inline constexpr bool __right_arm_starved = false;
 
 template <class _P1, class... _As, class _P2, class... _Bs>
-inline constexpr bool __right_arm_starved<__when_is_a_t<_P1, _As...>, __when_is_a_t<_P2, _Bs...>> =
+inline constexpr bool __right_arm_starved<__if_isa_t<_P1, _As...>, __if_isa_t<_P2, _Bs...>> =
   __never_passes_through_v<_P1> && (__claimed_by_any<_Bs, _As...> && ...);
 
 // A cone on the left starves an exact entry inside it on the right; an exact entry on the
 // left starves only its own repetitions. The converse (exact left, cone right) never starves:
 // the cone always has more members.
 template <class _P1, class... _As, class _P2, class... _Bs>
-inline constexpr bool __right_arm_starved<__when_is_a_t<_P1, _As...>, __when_exactly_t<_P2, _Bs...>> =
+inline constexpr bool __right_arm_starved<__if_isa_t<_P1, _As...>, __if_monomorphic_t<_P2, _Bs...>> =
   __never_passes_through_v<_P1> && (__claimed_by_any<_Bs, _As...> && ...);
 
 template <class _P1, class... _As, class _P2, class... _Bs>
-inline constexpr bool __right_arm_starved<__when_exactly_t<_P1, _As...>, __when_exactly_t<_P2, _Bs...>> =
+inline constexpr bool __right_arm_starved<__if_monomorphic_t<_P1, _As...>, __if_monomorphic_t<_P2, _Bs...>> =
   __never_passes_through_v<_P1> && (__listed_exactly<_Bs, _As...> && ...);
 
 // The alternation composite `_L | _R`: `_L` claims first; if it declines by throwing, `_R`
@@ -2751,10 +2751,10 @@ decltype(auto) __run_under([[maybe_unused]] __on_throw_policy<_Reaction>& __poli
                 "errsink has nothing to do for a noexcept callable, which terminates rather than "
                 "throws; call such a callable directly; under <<, a noexcept action must return a status to be fed");
   static_assert(_Feed || !__selects_returned_v<_P>,
-                "under ->* an action's return is yielded unchecked, so a status selector (when_equal, returned) "
+                "under ->* an action's return is yielded unchecked, so a status selector (if_equal, returned) "
                 "never matches; use << to read the return as an error code");
   static_assert(!_Feed || __may_return_status || !__selects_returned_v<_P>,
-                "a status selector (when_equal, returned) never matches an operand that returns no status; "
+                "a status selector (if_equal, returned) never matches an operand that returns no status; "
                 "remove it, or make the callable return a status");
   static_assert(!__may_throw || (__domain_v<_P> & __on_thrown) != 0,
                 "the callable can throw, but the policy has no treatment for exceptions; add a thrown(...) arm "
@@ -2877,8 +2877,8 @@ __status_answer<_Status> __offer_past(__on_throw_policy<_Reaction>& __policy, co
   __status_path_nothrow_v<_Reaction, _Status, __past_result<_Status>>)
 {
   static_assert(!__selects_thrown_v<_Reaction>,
-                "a type selector (when_is_a, when_exactly, thrown) never matches a status operand, which cannot "
-                "throw; select statuses with when_equal or returned");
+                "a type selector (if_isa, if_monomorphic, thrown) never matches a status operand, which cannot "
+                "throw; select statuses with if_equal or returned");
   static_assert((__domain_v<_Reaction> & __on_returned) != 0,
                 "a status operand needs a policy with a treatment for a failing status; thrown(...) and defer "
                 "apply to exceptions only (store(&eptr) keeps a status's exception)");
@@ -3017,11 +3017,11 @@ struct __status_set
   }
 };
 
-// `when_equal(values...)(p)`: offer a status to `p` when it equals one of the values, else pass it
+// `if_equal(values...)(p)`: offer a status to `p` when it equals one of the values, else pass it
 // through. A value selector has nothing to match on the exception channel, where it passes
 // through by rethrowing (so it can head a `|`).
 template <class _P, class _Status, ::cuda::std::size_t _Count>
-struct __when_equal_t : __forwards_success<_P>
+struct __if_equal_t : __forwards_success<_P>
 {
   using __exception_sink_tag = void;
   __status_set<_Status, _Count> __set_;
@@ -3038,7 +3038,7 @@ struct __when_equal_t : __forwards_success<_P>
                                    _Fn& __fn) noexcept(__status_path_nothrow_v<_P, _Operand, _Fn>)
   {
     static_assert(::cuda::std::is_same_v<_Operand, _Status>,
-                  "when_equal(values...) matches a status of the values' own type; the operand is a status of another "
+                  "if_equal(values...) matches a status of the values' own type; the operand is a status of another "
                   "type");
     if (__set_.__contains(__status))
     {
@@ -3049,7 +3049,7 @@ struct __when_equal_t : __forwards_success<_P>
 };
 
 template <class _Status, ::cuda::std::size_t _Count>
-struct __when_equal_selector
+struct __if_equal_selector
 {
   __status_set<_Status, _Count> __set_;
 
@@ -3057,20 +3057,20 @@ struct __when_equal_selector
   auto operator()(_P&& __p) const
   {
     auto __np = __normalize(::cuda::std::forward<_P>(__p));
-    return __when_equal_t<decltype(__np), _Status, _Count>{{::cuda::std::move(__np)}, __set_};
+    return __if_equal_t<decltype(__np), _Status, _Count>{{::cuda::std::move(__np)}, __set_};
   }
 };
 
 template <class _P, class _Status, ::cuda::std::size_t _Count>
-inline constexpr unsigned __domain_v<__when_equal_t<_P, _Status, _Count>> = __on_returned & __domain_v<_P>;
+inline constexpr unsigned __domain_v<__if_equal_t<_P, _Status, _Count>> = __on_returned & __domain_v<_P>;
 template <class _P, class _Status, ::cuda::std::size_t _Count>
-inline constexpr bool __needs_future_v<__when_equal_t<_P, _Status, _Count>> = __needs_future_v<_P>;
+inline constexpr bool __needs_future_v<__if_equal_t<_P, _Status, _Count>> = __needs_future_v<_P>;
 template <class _P, class _Status, ::cuda::std::size_t _Count>
-inline constexpr bool __produces_value_v<__when_equal_t<_P, _Status, _Count>> = __produces_value_v<_P>;
+inline constexpr bool __produces_value_v<__if_equal_t<_P, _Status, _Count>> = __produces_value_v<_P>;
 template <class _P, class _Status, ::cuda::std::size_t _Count>
-inline constexpr bool __selects_thrown_v<__when_equal_t<_P, _Status, _Count>> = __selects_thrown_v<_P>;
+inline constexpr bool __selects_thrown_v<__if_equal_t<_P, _Status, _Count>> = __selects_thrown_v<_P>;
 template <class _P, class _Status, ::cuda::std::size_t _Count>
-inline constexpr bool __selects_returned_v<__when_equal_t<_P, _Status, _Count>> = true;
+inline constexpr bool __selects_returned_v<__if_equal_t<_P, _Status, _Count>> = true;
 
 // `thrown(p)`: `p` on the exception channel only; on the code channel a status passes through.
 template <class _P>
@@ -3235,7 +3235,7 @@ inline constexpr bool __is_policy_argument_v =
 #endif // !_CCCL_DOXYGEN_INVOKED
 
 /**
- * @brief Restricts a policy to exceptions matching any of `E1, E2, ...`: `when_is_a<E...>(p)`
+ * @brief Restricts a policy to exceptions matching any of `E1, E2, ...`: `if_isa<E...>(p)`
  * runs `p`'s exception path when the active exception matches any listed type by catch-clause
  * rules (same or publicly derived), and otherwise forwards by rethrowing. The listed types may
  * be anything catchable -- std::exception derivatives, user structs, even `int`. Native C++
@@ -3244,49 +3244,50 @@ inline constexpr bool __is_policy_argument_v =
  * claims another (identical or base-of) is rejected -- the claimed entry would be dead.
  */
 template <class... _Es, class _P>
-auto when_is_a(_P&& __p)
+auto if_isa(_P&& __p)
 {
-  static_assert(sizeof...(_Es) > 0, "when_is_a requires at least one exception type");
-  static_assert(detail::__when_is_a_pack_ok<_Es...>,
-                "when_is_a<..., Base, ..., Derived, ...>: the Derived entry is dead "
+  static_assert(sizeof...(_Es) > 0, "if_isa requires at least one exception type");
+  static_assert(detail::__if_isa_pack_ok<_Es...>,
+                "if_isa<..., Base, ..., Derived, ...>: the Derived entry is dead "
                 "(Base already claims it)");
   auto __np = detail::__normalize(::cuda::std::forward<_P>(__p));
-  return detail::__when_is_a_t<decltype(__np), _Es...>{::cuda::std::move(__np)};
+  return detail::__if_isa_t<decltype(__np), _Es...>{::cuda::std::move(__np)};
 }
 
 /**
  * @brief Restricts a policy to exceptions whose dynamic type is exactly one of `E1, E2, ...`:
- * monomorphic where @ref when_is_a is polymorphic, so a handler accepts a type without
- * inheriting its cone. `when_exactly<std::bad_alloc>(p)` handles allocation pressure yet
+ * monomorphic where @ref if_isa is polymorphic, so a handler accepts a type without
+ * inheriting its cone. `if_monomorphic<std::bad_alloc>(p)` handles allocation pressure yet
  * lets `std::bad_array_new_length`, a size-computation bug, fly on; value operations that
  * would slice under a cone (copy, store) are safe behind an exact gate; and the guard's
  * contract cannot drift when someone derives a new type later. Matching reads the dynamic
  * type through the `std::exception` funnel, so every listed type must derive
  * `std::exception`, and a non-std active exception always forwards. Duplicates are rejected;
  * Base and Derived may both be listed, each matching only itself. In `|` chains,
- * `when_exactly<E>(recover) | when_is_a<E>(fallback)` layers the exact type against the
+ * `if_monomorphic<E>(recover) | if_isa<E>(fallback)` layers the exact type against the
  * rest of its cone; the reverse order starves the exact arm and is a compile error.
  */
 template <class... _Es, class _P>
-auto when_exactly(_P&& __p)
+auto if_monomorphic(_P&& __p)
 {
-  static_assert(sizeof...(_Es) > 0, "when_exactly requires at least one exception type");
+  static_assert(sizeof...(_Es) > 0, "if_monomorphic requires at least one exception type");
   static_assert((::cuda::std::is_base_of_v<::std::exception, _Es> && ...),
-                "when_exactly matches dynamic types through the std::exception funnel; every "
-                "listed type must derive std::exception (when_is_a takes anything catchable)");
-  static_assert(detail::__when_exactly_pack_ok<_Es...>, "when_exactly<..., E, ..., E, ...>: a repeated entry is dead");
+                "if_monomorphic matches dynamic types through the std::exception funnel; every "
+                "listed type must derive std::exception (if_isa takes anything catchable)");
+  static_assert(detail::__if_monomorphic_pack_ok<_Es...>,
+                "if_monomorphic<..., E, ..., E, ...>: a repeated entry is dead");
   auto __np = detail::__normalize(::cuda::std::forward<_P>(__p));
-  return detail::__when_exactly_t<decltype(__np), _Es...>{::cuda::std::move(__np)};
+  return detail::__if_monomorphic_t<decltype(__np), _Es...>{::cuda::std::move(__np)};
 }
 
 /**
  * @brief Restricts a policy to failing statuses equal to any of the given values:
- * `when_equal(v1, v2, ...)(p)` offers a status to `p` when it equals one of the values, and otherwise
+ * `if_equal(v1, v2, ...)(p)` offers a status to `p` when it equals one of the values, and otherwise
  * passes it through. The values share one status type, and the operand must be a status of that
  * same type. On the exception channel there is nothing to match and the exception passes
  * through, so the selector can head a `|`:
  * @code
- * while (errsink(when_equal(cudaErrorNotReady)(noop) | unwind) ->* cudaStreamQuery(s)) { ... }
+ * while (errsink(if_equal(cudaErrorNotReady)(noop) | unwind) ->* cudaStreamQuery(s)) { ... }
  * @endcode
  *
  * @param[in] __first The first status value to match.
@@ -3294,11 +3295,11 @@ auto when_exactly(_P&& __p)
  * @return A selector; calling it with a policy `p` yields the restricted policy.
  */
 template <class _Status, class... _More>
-auto when_equal(const _Status __first, const _More... __more)
+auto if_equal(const _Status __first, const _More... __more)
 {
   static_assert((::cuda::std::is_same_v<_Status, _More> && ...),
-                "when_equal(values...) requires all values to be of one status type");
-  return detail::__when_equal_selector<_Status, 1 + sizeof...(_More)>{{{__first, __more...}}};
+                "if_equal(values...) requires all values to be of one status type");
+  return detail::__if_equal_selector<_Status, 1 + sizeof...(_More)>{{{__first, __more...}}};
 }
 
 /**
@@ -3328,7 +3329,7 @@ auto thrown(_X&& __x)
   if constexpr (detail::__is_policy_argument_v<_X>)
   {
     static_assert(::cuda::std::is_same_v<_E, ::std::exception>,
-                  "thrown(p) with a policy selects the exception channel; restrict the type with when_is_a<E>(p)");
+                  "thrown(p) with a policy selects the exception channel; restrict the type with if_isa<E>(p)");
     auto __np = detail::__normalize(::cuda::std::forward<_X>(__x));
     return detail::__thrown_t<decltype(__np)>{{::cuda::std::move(__np)}};
   }
@@ -4285,8 +4286,8 @@ exception_sink type_erase(_P&& __p)
  * a success hook `on_success(...)` that observes the result while preserving its type. The named policies
  * include @ref eh::notify_t "notify", @ref eh::subst_t "subst", @ref eh::defer_t "defer",
  * @ref eh::fwd_t "fwd", @ref eh::unwind_t "unwind", @ref eh::retry_t "retry",
- * @ref eh::as_expected_t "as_expected", @ref eh::noop_t "noop", @ref eh::when_is_a,
- * @ref eh::when_exactly, @ref eh::when_equal, @ref eh::thrown, @ref eh::returned,
+ * @ref eh::as_expected_t "as_expected", @ref eh::noop_t "noop", @ref eh::if_isa,
+ * @ref eh::if_monomorphic, @ref eh::if_equal, @ref eh::thrown, @ref eh::returned,
  * @ref eh::when "when", @ref eh::translate_t "translate" / @ref eh::nest,
  * @ref eh::delay_t "delay", @ref eh::backoff, @ref eh::remember_t "remember",
  * @ref eh::circuit_breaker_t "circuit_breaker", and @ref eh::always. Guards forward what they
@@ -4339,7 +4340,7 @@ exception_sink type_erase(_P&& __p)
  * handles yields `status_traits<S>::success()`, one it forwards yields the status itself, and
  * `unwind` turns it into an exception. Policies that only handle exceptions see the status's
  * exception, `status_traits<S>::to_exception(status, loc)`. With exceptions disabled, such a
- * policy that may forward (`when_is_a`, a typed `store`, `translate`, a user policy without
+ * policy that may forward (`if_isa`, a typed `store`, `translate`, a user policy without
  * a code-channel hook) reports and aborts on the first failing status, since reaching its hook
  * means throwing; policies with a code-channel hook are unaffected.
  *
@@ -4910,54 +4911,54 @@ UNITTEST("policy algebra")
   };
   EXPECT(r7 == 8);
 
-  // when_is_a reconstructs the catch ladder: matching type handles, mismatch falls through,
+  // if_isa reconstructs the catch ladder: matching type handles, mismatch falls through,
   // non-std exceptions always decline.
-  const int r8 = errsink(when_is_a<::std::logic_error>(subst(1)) | subst(2))->*[]() -> int {
+  const int r8 = errsink(if_isa<::std::logic_error>(subst(1)) | subst(2))->*[]() -> int {
     throw ::std::logic_error("l");
   };
   EXPECT(r8 == 1);
-  const int r9 = errsink(when_is_a<::std::logic_error>(subst(1)) | subst(2))->*[]() -> int {
+  const int r9 = errsink(if_isa<::std::logic_error>(subst(1)) | subst(2))->*[]() -> int {
     throw ::std::runtime_error("r");
   };
   EXPECT(r9 == 2);
-  const int r10 = errsink(when_is_a<::std::exception>(subst(1)) | subst(2))->*[]() -> int {
-    throw 42; // reaches the handler as nullptr: when_is_a must decline
+  const int r10 = errsink(if_isa<::std::exception>(subst(1)) | subst(2))->*[]() -> int {
+    throw 42; // reaches the handler as nullptr: if_isa must decline
   };
   EXPECT(r10 == 2);
 
-  // when_exactly is monomorphic: the exact dynamic type handles, everything else declines.
-  const int rx1 = errsink(when_exactly<::std::logic_error>(subst(1)) | subst(2))->*[]() -> int {
+  // if_monomorphic is monomorphic: the exact dynamic type handles, everything else declines.
+  const int rx1 = errsink(if_monomorphic<::std::logic_error>(subst(1)) | subst(2))->*[]() -> int {
     throw ::std::logic_error{"exact"};
   };
   EXPECT(rx1 == 1);
-  const int rx2 = errsink(when_exactly<::std::logic_error>(subst(1)) | subst(2))->*[]() -> int {
+  const int rx2 = errsink(if_monomorphic<::std::logic_error>(subst(1)) | subst(2))->*[]() -> int {
     throw ::std::domain_error{"derived, so no exact match"};
   };
   EXPECT(rx2 == 2);
-  const int rx3 = errsink(when_exactly<::std::logic_error>(subst(1)) | subst(2))->*[]() -> int {
-    throw 42; // non-std: the funnel is null, when_exactly must decline
+  const int rx3 = errsink(if_monomorphic<::std::logic_error>(subst(1)) | subst(2))->*[]() -> int {
+    throw 42; // non-std: the funnel is null, if_monomorphic must decline
   };
   EXPECT(rx3 == 2);
   // Layered severity: the exact type recovers, the rest of its cone takes the next arm.
   const int rx4 =
-    errsink(when_exactly<::std::logic_error>(subst(1)) | when_is_a<::std::logic_error>(subst(2)))->*[]() -> int {
+    errsink(if_monomorphic<::std::logic_error>(subst(1)) | if_isa<::std::logic_error>(subst(2)))->*[]() -> int {
     throw ::std::domain_error{"cone remainder"};
   };
   EXPECT(rx4 == 2);
 
   // Derived-to-base matching, like a real catch clause.
-  const int r11 = errsink(when_is_a<::std::exception>(subst(1)) | subst(2))->*[]() -> int {
+  const int r11 = errsink(if_isa<::std::exception>(subst(1)) | subst(2))->*[]() -> int {
     throw ::std::runtime_error("derived");
   };
   EXPECT(r11 == 1);
 
   // Multi-type: either listed exception is claimed; others decline.
   {
-    const int a = errsink(when_is_a<::std::logic_error, ::std::overflow_error>(subst(1)) | subst(2))->*[]() -> int {
+    const int a = errsink(if_isa<::std::logic_error, ::std::overflow_error>(subst(1)) | subst(2))->*[]() -> int {
       throw ::std::overflow_error("o");
     };
     EXPECT(a == 1);
-    const int b = errsink(when_is_a<::std::logic_error, ::std::overflow_error>(subst(1)) | subst(2))->*[]() -> int {
+    const int b = errsink(if_isa<::std::logic_error, ::std::overflow_error>(subst(1)) | subst(2))->*[]() -> int {
       throw ::std::runtime_error("r");
     };
     EXPECT(b == 2);
@@ -4965,13 +4966,11 @@ UNITTEST("policy algebra")
 
   // The correct cascade order -- derived before base -- is legal and behaves.
   {
-    const int a =
-      errsink(when_is_a<::std::runtime_error>(subst(1)) | when_is_a<::std::exception>(subst(2)))->*[]() -> int {
+    const int a = errsink(if_isa<::std::runtime_error>(subst(1)) | if_isa<::std::exception>(subst(2)))->*[]() -> int {
       throw ::std::runtime_error("r");
     };
     EXPECT(a == 1);
-    const int b =
-      errsink(when_is_a<::std::runtime_error>(subst(1)) | when_is_a<::std::exception>(subst(2)))->*[]() -> int {
+    const int b = errsink(if_isa<::std::runtime_error>(subst(1)) | if_isa<::std::exception>(subst(2)))->*[]() -> int {
       throw ::std::logic_error("l");
     };
     EXPECT(b == 2);
@@ -4980,8 +4979,7 @@ UNITTEST("policy algebra")
   // A declining inner policy keeps the right arm live even under a broader left guard: the
   // starved-arm theorem requires a never-declining inner, and this inner declines non-matches.
   {
-    const int v =
-      errsink(when_is_a<::std::exception>(when_is_a<::std::runtime_error>(subst(1))) | subst(2))->*[]() -> int {
+    const int v = errsink(if_isa<::std::exception>(if_isa<::std::runtime_error>(subst(1))) | subst(2))->*[]() -> int {
       throw ::std::logic_error("l");
     };
     EXPECT(v == 2);
@@ -4989,25 +4987,25 @@ UNITTEST("policy algebra")
 
   // Nonstandard exception types work as guards: matching is by catch-clause rules.
   {
-    const int a = errsink(when_is_a<int>(subst(-7)) | subst(0))->*[]() -> int {
+    const int a = errsink(if_isa<int>(subst(-7)) | subst(0))->*[]() -> int {
       throw 42;
     };
     EXPECT(a == -7);
-    const int b = errsink(when_is_a<int>(subst(-7)) | subst(0))->*[]() -> int {
+    const int b = errsink(if_isa<int>(subst(-7)) | subst(0))->*[]() -> int {
       throw 3.14;
     };
     EXPECT(b == 0);
   }
 
   // Negative-compile expectations (do not compile; kept as comments near the code they guard):
-  //  - when_is_a<::std::exception, ::std::runtime_error>(subst(1));
+  //  - if_isa<::std::exception, ::std::runtime_error>(subst(1));
   //      -> "... the Derived entry is dead (Base already claims it)"
-  //  - when_is_a<::std::runtime_error, ::std::runtime_error>(subst(1));
+  //  - if_isa<::std::runtime_error, ::std::runtime_error>(subst(1));
   //      -> same (a duplicate subsumes itself)
 
   // & binds tighter than |, so the ladder below parses as intended without parentheses.
   trace.clear();
-  const int r12 = errsink(when_is_a<::std::logic_error>(subst(1)) | mark('n') & subst(2))->*[]() -> int {
+  const int r12 = errsink(if_isa<::std::logic_error>(subst(1)) | mark('n') & subst(2))->*[]() -> int {
     throw ::std::runtime_error("r");
   };
   EXPECT(r12 == 2);
@@ -5104,9 +5102,9 @@ UNITTEST("policy algebra")
   //  still pass unmodified.)
 
   // Negative-compile expectations (do not compile; kept as comments near the code they guard):
-  //  - errsink(when_is_a<::std::exception>(subst(1)) | when_is_a<::std::runtime_error>(subst(2))) ->* ...;
+  //  - errsink(if_isa<::std::exception>(subst(1)) | if_isa<::std::runtime_error>(subst(2))) ->* ...;
   //      -> "the left type guard already claims every exception type the right arm lists; ..."
-  //  5b. errsink(when_is_a<std::logic_error>(subst(1)) | when_exactly<std::logic_error>(subst(2))) ->* ...
+  //  5b. errsink(if_isa<std::logic_error>(subst(1)) | if_monomorphic<std::logic_error>(subst(2))) ->* ...
   //      -> same message: the cone on the left starves the exact entry inside it
   //  - errsink(subst(8) | subst(9)) ->* []() -> int { throw 1; };
   //      -> "the left policy never passes through; alternatives after it are unreachable"
@@ -5283,19 +5281,19 @@ UNITTEST("re-running policies")
     EXPECT(calls == 2);
   }
 
-  // when_is_a restricts what gets re-run: wrong type declines without re-running.
+  // if_isa restricts what gets re-run: wrong type declines without re-running.
   {
     int calls   = 0;
-    const int v = errsink(when_is_a<::std::logic_error>(retry * 5) | subst(-1))->*[&]() -> int {
+    const int v = errsink(if_isa<::std::logic_error>(retry * 5) | subst(-1))->*[&]() -> int {
       ++calls;
       throw ::std::runtime_error("not a logic_error");
     };
     EXPECT(v == -1);
-    EXPECT(calls == 1); // no re-runs: when_is_a declined before retry saw it
+    EXPECT(calls == 1); // no re-runs: if_isa declined before retry saw it
   }
   {
     int calls   = 0;
-    const int v = errsink(when_is_a<::std::logic_error>(retry * 2) | subst(-1))->*[&]() -> int {
+    const int v = errsink(if_isa<::std::logic_error>(retry * 2) | subst(-1))->*[&]() -> int {
       ++calls;
       throw ::std::logic_error("is one");
     };
@@ -5551,7 +5549,7 @@ UNITTEST("guard translate delay backoff remember")
   // translate<From, To>: a From becomes a To for the next typed arm; non-From declines.
   {
     const int v =
-      errsink(translate<__ut_low_error, __ut_high_error> | when_is_a<__ut_high_error>(subst(1)))->*[]() -> int {
+      errsink(translate<__ut_low_error, __ut_high_error> | if_isa<__ut_high_error>(subst(1)))->*[]() -> int {
       throw __ut_low_error("cause");
     };
     EXPECT(v == 1);
@@ -5876,10 +5874,10 @@ UNITTEST("repetition")
     EXPECT(calls == 3);
   }
 
-  // A plain declining arm repeats too: when_is_a guards every iteration.
+  // A plain declining arm repeats too: if_isa guards every iteration.
   {
     int calls   = 0;
-    const int v = errsink(when_is_a<::std::logic_error>(retry) * 5 | subst(-1))->*[&]() -> int {
+    const int v = errsink(if_isa<::std::logic_error>(retry) * 5 | subst(-1))->*[&]() -> int {
       ++calls;
       throw ::std::runtime_error("not a logic_error");
     };
@@ -6669,12 +6667,12 @@ UNITTEST("error sinks: polling idiom")
   using namespace cuda::experimental::stf;
   using namespace cuda::experimental::stf::eh;
   // A matched selector that passes through hands the status to the next arm (same as
-  // when_is_a<E>(fwd) | p on the exception channel), so "stop here and yield this code" is a
+  // if_isa<E>(fwd) | p on the exception channel), so "stop here and yield this code" is a
   // substitution of the code by itself.
-  auto pol = when_equal(cudaErrorNotReady)(noop) | unwind; // noop on a code: handled, status unchanged
+  auto pol = if_equal(cudaErrorNotReady)(noop) | unwind; // noop on a code: handled, status unchanged
   EXPECT((errsink(pol)->*cudaErrorNotReady) == cudaErrorNotReady);
   EXPECT((errsink(pol)->*cudaSuccess) == cudaSuccess);
-  EXPECT((errsink(when_equal(cudaErrorNotReady)(noop) | unwind)->*cudaErrorNotReady) == cudaErrorNotReady);
+  EXPECT((errsink(if_equal(cudaErrorNotReady)(noop) | unwind)->*cudaErrorNotReady) == cudaErrorNotReady);
   bool threw = false;
   try
   {
@@ -6691,7 +6689,7 @@ UNITTEST("error sinks: subst remaps a code")
 {
   using namespace cuda::experimental::stf;
   using namespace cuda::experimental::stf::eh;
-  auto pol = when_equal(cudaErrorCudartUnloading)(subst(cudaSuccess)) | fwd;
+  auto pol = if_equal(cudaErrorCudartUnloading)(subst(cudaSuccess)) | fwd;
   EXPECT((errsink(pol)->*cudaErrorCudartUnloading) == cudaSuccess);
   EXPECT((errsink(pol)->*cudaErrorInvalidValue) == cudaErrorInvalidValue);
 };
@@ -6859,7 +6857,7 @@ UNITTEST("error sinks: << chains, each operand after the previous was handled")
   EXPECT(c.status<cudaError_t>() == cudaErrorNotReady);
   // a status the policy handles is not recorded, even when its substitute is a failing code
   {
-    const auto c = errsink(when_equal(cudaErrorNotReady)(subst(cudaErrorInvalidValue)) | fwd) << cudaErrorNotReady;
+    const auto c = errsink(if_equal(cudaErrorNotReady)(subst(cudaErrorInvalidValue)) | fwd) << cudaErrorNotReady;
     EXPECT(!c.forwarded());
   }
 };
@@ -6965,13 +6963,13 @@ UNITTEST("error sinks: retry on a status-returning action")
   using namespace cuda::experimental::stf;
   using namespace cuda::experimental::stf::eh;
   int n  = 0;
-  auto c = errsink(when_equal(cudaErrorNotReady)(retry(3))) << [&]() noexcept {
+  auto c = errsink(if_equal(cudaErrorNotReady)(retry(3))) << [&]() noexcept {
     return ++n < 3 ? cudaErrorNotReady : cudaSuccess;
   };
   EXPECT(!c.forwarded());
   EXPECT(n == 3);
   n       = 0;
-  auto c2 = errsink(when_equal(cudaErrorNotReady)(retry(2))) << [&]() noexcept {
+  auto c2 = errsink(if_equal(cudaErrorNotReady)(retry(2))) << [&]() noexcept {
     ++n;
     return cudaErrorNotReady;
   };
@@ -7085,7 +7083,7 @@ UNITTEST("error sinks: a re-run that throws is offered to the policy")
   using namespace cuda::experimental::stf;
   using namespace cuda::experimental::stf::eh;
   int n        = 0;
-  const auto c = errsink(when_equal(cudaErrorNotReady)(retry(3)) | thrown(subst(cudaSuccess))) << [&]() -> cudaError_t {
+  const auto c = errsink(if_equal(cudaErrorNotReady)(retry(3)) | thrown(subst(cudaSuccess))) << [&]() -> cudaError_t {
     if (++n == 2)
     {
       throw ::std::runtime_error("second attempt");
@@ -7100,9 +7098,9 @@ UNITTEST("error sinks: polling idiom under section 1's |")
 {
   using namespace cuda::experimental::stf;
   using namespace cuda::experimental::stf::eh;
-  // A status that when_equal(...)(fwd) passes through goes on to the right arm of |; keeping the
+  // A status that if_equal(...)(fwd) passes through goes on to the right arm of |; keeping the
   // not-ready code is a substitution that handles it.
-  auto pol = when_equal(cudaErrorNotReady)(subst(cudaErrorNotReady)) | unwind;
+  auto pol = if_equal(cudaErrorNotReady)(subst(cudaErrorNotReady)) | unwind;
   EXPECT((errsink(pol)->*cudaErrorNotReady) == cudaErrorNotReady);
   EXPECT((errsink(pol)->*cudaSuccess) == cudaSuccess);
   bool threw = false;

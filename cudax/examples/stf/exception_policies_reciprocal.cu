@@ -88,7 +88,7 @@ int main()
     {
       if (report)
       {
-        ON_THROW(when_is_a<::std::domain_error>(notify))
+        ON_THROW(if_isa<::std::domain_error>(notify))
         {
           ::std::rethrow_exception(report);
         };
