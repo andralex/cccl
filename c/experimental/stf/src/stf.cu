@@ -68,9 +68,9 @@ inline constexpr bool is_complete_v = is_complete<T>::value;
 //
 // The C++ implementation reports failures with exceptions. No exception may leave an extern "C"
 // entry point (that would be undefined behavior for a C caller and std::terminate in practice),
-// so every entry runs its body through `stf_guard` / `stf_guard_or`, which catch, classify the
-// exception into an `stf_error_t`, record it with its message for the calling thread, and return
-// the entry's failure value.
+// so every entry runs its body under the `stf_boundary` sink, which classifies the exception into
+// an `stf_error_t`, records it with its message for the calling thread, and answers the entry's
+// failure value. Entries not yet migrated use the `stf_guard` / `stf_guard_or` wrappers below.
 
 struct stf_last_error_record
 {
@@ -138,6 +138,71 @@ void stf_record_current_exception() noexcept
   {
     stf_record_error(STF_ERROR_UNKNOWN, "non-standard exception");
   }
+}
+
+// Records the active exception under `code`, with its text; an effect, so whatever follows it in
+// `&` decides the answer.
+inline auto stf_record_as(stf_error_t code)
+{
+  return sump::effect([code](const ::std::exception* e) noexcept {
+    stf_record_error(code, e ? e->what() : "non-standard exception");
+  });
+}
+
+// Resets the calling thread's last error when an entry starts, so a successful call always leaves
+// STF_SUCCESS behind. Decides nothing on a throw.
+struct stf_entry_t
+{
+  void on_enter() noexcept
+  {
+    stf_last_error().code = STF_SUCCESS;
+  }
+  template <class Fn>
+  void on_thrown(const ::std::exception*, ::cuda::std::source_location, Fn&) noexcept
+  {}
+};
+
+// An entry's failure value: the recorded code for status-returning entries, NULL for handle- and
+// pointer-returning ones. Entries whose result is a scalar with no natural failure value name
+// their sentinel with `stf_boundary_or`.
+struct stf_failure_t
+{
+  operator stf_error_t() const noexcept
+  {
+    return stf_last_error().code;
+  }
+  template <class T>
+  operator T*() const noexcept
+  {
+    return nullptr;
+  }
+};
+
+// One translation table for the whole interface: the exception type selects the error category.
+// A `cuda_exception` also consumes the runtime's pending error: this library links its own CUDA
+// runtime, so the caller cannot clear it, and STF helpers that poll cudaGetLastError() (host
+// memory pinning) would otherwise trip on it later.
+inline const auto stf_classify =
+  sump::if_isa<cuda_exception>(sump::effect([](const ::std::exception* e) noexcept {
+    stf_record_error(STF_ERROR_CUDA, e->what());
+    (void) cudaGetLastError();
+  }))
+  | sump::if_isa<::std::invalid_argument, ::std::out_of_range, ::std::domain_error>(
+    stf_record_as(STF_ERROR_INVALID_ARGUMENT))
+  | sump::if_isa<::std::bad_alloc>(stf_record_as(STF_ERROR_OUT_OF_MEMORY))
+  | sump::if_isa<::std::exception>(stf_record_as(STF_ERROR_RUNTIME)) | stf_record_as(STF_ERROR_UNKNOWN);
+
+// The sink every entry point runs its body under: `stf_boundary ->* [&] { ...; return STF_SUCCESS; }`
+// for a status-returning entry, `stf_boundary ->* [&]() -> handle { ... }` for a handle-returning one.
+inline const auto stf_boundary = stf_entry_t{} & stf_classify & sump::subst(stf_failure_t{});
+
+// Same, for an entry whose result is a scalar with no natural failure value: `on_error` is the
+// answer, and the caller tells the two apart with stf_get_last_error().
+template <class R>
+auto stf_boundary_or(R on_error)
+{
+  // A prvalue: `subst` refers to an lvalue instead of copying it, and `on_error` dies with this call.
+  return stf_entry_t{} & stf_classify & sump::subst(R{on_error});
 }
 
 // Runs `f` as the body of an entry point. A `void` body yields `stf_error_t`; a pointer-returning
@@ -406,43 +471,43 @@ void stf_clear_last_error(void)
 
 stf_exec_place_handle stf_exec_place_host(void)
 {
-  return stf_guard([&]() -> stf_exec_place_handle {
+  return stf_boundary->*[&]() -> stf_exec_place_handle {
     return to_opaque(new exec_place(exec_place::host()));
-  });
+  };
 }
 
 stf_exec_place_handle stf_exec_place_device(int dev_id)
 {
-  return stf_guard([&]() -> stf_exec_place_handle {
+  return stf_boundary->*[&]() -> stf_exec_place_handle {
     stf_require_device(dev_id);
     return to_opaque(new exec_place(exec_place::device(dev_id)));
-  });
+  };
 }
 
 stf_exec_place_handle stf_exec_place_current_device(void)
 {
-  return stf_guard([&]() -> stf_exec_place_handle {
+  return stf_boundary->*[&]() -> stf_exec_place_handle {
     return to_opaque(new exec_place(exec_place::current_device()));
-  });
+  };
 }
 
 stf_exec_place_handle stf_exec_place_cuda_context(CUcontext ctx, int dev_id)
 {
-  return stf_guard([&]() -> stf_exec_place_handle {
+  return stf_boundary->*[&]() -> stf_exec_place_handle {
     _CCCL_ASSERT(ctx != nullptr, "CUcontext must not be null");
     // -1 asks the C++ side to derive the device from the context.
     if (dev_id != -1)
     {
       stf_require_device(dev_id);
     }
-    // A null context in release builds throws in exec_place::cuda_context and is recorded by the guard.
+    // A null context in release builds throws in exec_place::cuda_context and is recorded by the sink.
     return to_opaque(new exec_place(exec_place::cuda_context(ctx, dev_id)));
-  });
+  };
 }
 
 stf_green_context_helper_handle stf_green_context_helper_create(int sm_count, int dev_id)
 {
-  return stf_guard([&]() -> stf_green_context_helper_handle {
+  return stf_boundary->*[&]() -> stf_green_context_helper_handle {
 #if _CCCL_CTK_AT_LEAST(12, 4)
     stf_require_device(dev_id);
     return to_opaque(new green_context_helper(sm_count, dev_id));
@@ -451,107 +516,111 @@ stf_green_context_helper_handle stf_green_context_helper_create(int sm_count, in
     (void) dev_id;
     throw ::std::runtime_error("green contexts require CUDA 12.4 or later");
 #endif
-  });
+  };
 }
 
 stf_error_t stf_green_context_helper_destroy(stf_green_context_helper_handle h)
 {
-  return stf_guard([&] {
+  return stf_boundary->*[&] {
 #if _CCCL_CTK_AT_LEAST(12, 4)
     delete from_opaque(h);
 #else
     (void) h;
 #endif
-  });
+    return STF_SUCCESS;
+  };
 }
 
 size_t stf_green_context_helper_get_count(stf_green_context_helper_handle h)
 {
-  return stf_guard_or(size_t{0}, [&]() -> size_t {
+  return stf_boundary_or(size_t{0})->*[&]() -> size_t {
 #if _CCCL_CTK_AT_LEAST(12, 4)
     _CCCL_ASSERT(h != nullptr, "green_context_helper handle must not be null");
     return from_opaque(h)->get_count();
 #else
-  (void) h;
-  return 0;
+    (void) h;
+    return 0;
 #endif
-  });
+  };
 }
 
 int stf_green_context_helper_get_device_id(stf_green_context_helper_handle h)
 {
-  return stf_guard_or(-1, [&]() -> int {
+  return stf_boundary_or(-1)->*[&]() -> int {
 #if _CCCL_CTK_AT_LEAST(12, 4)
     _CCCL_ASSERT(h != nullptr, "green_context_helper handle must not be null");
     return static_cast<int>(from_opaque(h)->get_device_id());
 #else
-  (void) h;
-  return -1;
+    (void) h;
+    return -1;
 #endif
-  });
+  };
 }
 
 stf_exec_place_handle stf_exec_place_clone(stf_exec_place_handle h)
 {
-  return stf_guard([&]() -> stf_exec_place_handle {
+  return stf_boundary->*[&]() -> stf_exec_place_handle {
     _CCCL_ASSERT(h != nullptr, "exec_place handle must not be null");
     const auto* ep = from_opaque_const(h);
     return to_opaque(new exec_place(*ep));
-  });
+  };
 }
 
 stf_error_t stf_exec_place_destroy(stf_exec_place_handle h)
 {
-  return stf_guard([&] {
+  return stf_boundary->*[&] {
     delete from_opaque(h);
-  });
+    return STF_SUCCESS;
+  };
 }
 
 int stf_exec_place_is_host(stf_exec_place_handle h)
 {
-  return stf_guard_or(int{0}, [&]() -> int {
+  return stf_boundary_or(int{0})->*[&]() -> int {
     _CCCL_ASSERT(h != nullptr, "exec_place handle must not be null");
     return from_opaque(h)->is_host();
-  });
+  };
 }
 
 int stf_exec_place_is_device(stf_exec_place_handle h)
 {
-  return stf_guard_or(int{0}, [&]() -> int {
+  return stf_boundary_or(int{0})->*[&]() -> int {
     _CCCL_ASSERT(h != nullptr, "exec_place handle must not be null");
     return from_opaque(h)->is_device();
-  });
+  };
 }
 
 stf_error_t stf_exec_place_get_dims(stf_exec_place_handle h, stf_dim4* out_dims)
 {
-  return stf_guard([&] {
+  return stf_boundary->*[&] {
     _CCCL_ASSERT(h != nullptr && out_dims != nullptr, "invalid arguments");
     dim4 d = from_opaque(h)->get_dims();
     static_assert(sizeof(d) == sizeof(stf_dim4), "dim4 and stf_dim4 must have the same size");
     ::std::memcpy(out_dims, &d, sizeof(d));
-  });
+    return STF_SUCCESS;
+  };
 }
 
 size_t stf_exec_place_size(stf_exec_place_handle h)
 {
-  return stf_guard_or(size_t{0}, [&]() -> size_t {
+  return stf_boundary_or(size_t{0})->*[&]() -> size_t {
     _CCCL_ASSERT(h != nullptr, "exec_place handle must not be null");
     return from_opaque(h)->size();
-  });
+  };
 }
 
 stf_error_t stf_exec_place_set_affine_data_place(stf_exec_place_handle h, stf_data_place_handle affine_dplace)
 {
-  return stf_guard([&] {
+  return stf_boundary->*[&] {
     _CCCL_ASSERT(h != nullptr && affine_dplace != nullptr, "invalid arguments");
     from_opaque(h)->set_affine_data_place(*from_opaque(affine_dplace));
-  });
+    return STF_SUCCESS;
+  };
 }
 
 stf_exec_place_handle stf_exec_place_grid_from_devices(const int* device_ids, size_t count)
 {
-  return stf_guard([&]() -> stf_exec_place_handle {
+  return stf_boundary->*[&]() -> stf_exec_place_handle {
     _CCCL_ASSERT(device_ids != nullptr || count == 0, "device_ids must not be null unless count is 0");
     ::std::vector<exec_place> places;
     places.reserve(count);
@@ -561,13 +630,13 @@ stf_exec_place_handle stf_exec_place_grid_from_devices(const int* device_ids, si
       places.push_back(exec_place::device(device_ids[i]));
     }
     return to_opaque(new exec_place(make_grid(::std::move(places))));
-  });
+  };
 }
 
 stf_exec_place_handle
 stf_exec_place_grid_create(const stf_exec_place_handle* places, size_t count, const stf_dim4* grid_dims)
 {
-  return stf_guard([&]() -> stf_exec_place_handle {
+  return stf_boundary->*[&]() -> stf_exec_place_handle {
     _CCCL_ASSERT(places != nullptr || count == 0, "places must not be null unless count is 0");
     ::std::vector<exec_place> cpp_places;
     cpp_places.reserve(count);
@@ -579,25 +648,25 @@ stf_exec_place_grid_create(const stf_exec_place_handle* places, size_t count, co
     const dim4 dims   = shaped ? dim4(grid_dims->x, grid_dims->y, grid_dims->z, grid_dims->t) : dim4(count, 1, 1, 1);
     return to_opaque(
       new exec_place(shaped ? make_grid(::std::move(cpp_places), dims) : make_grid(::std::move(cpp_places))));
-  });
+  };
 }
 
 stf_exec_place_handle stf_exec_place_grid_reshape(stf_exec_place_handle grid, const stf_dim4* grid_dims)
 {
-  return stf_guard([&]() -> stf_exec_place_handle {
+  return stf_boundary->*[&]() -> stf_exec_place_handle {
     _CCCL_ASSERT(grid != nullptr, "grid must not be null");
     _CCCL_ASSERT(grid_dims != nullptr, "grid_dims must not be null");
     const dim4 dims(grid_dims->x, grid_dims->y, grid_dims->z, grid_dims->t);
     return to_opaque(new exec_place(from_opaque_const(grid)->reshape(dims)));
-  });
+  };
 }
 
 stf_exec_place_handle stf_exec_place_grid_collapse_axes(stf_exec_place_handle grid, size_t first_axis, size_t last_axis)
 {
-  return stf_guard([&]() -> stf_exec_place_handle {
+  return stf_boundary->*[&]() -> stf_exec_place_handle {
     _CCCL_ASSERT(grid != nullptr, "grid must not be null");
     return to_opaque(new exec_place(from_opaque_const(grid)->collapse_axes(first_axis, last_axis)));
-  });
+  };
 }
 
 stf_error_t stf_exec_place_grid_destroy(stf_exec_place_handle grid)
@@ -607,44 +676,45 @@ stf_error_t stf_exec_place_grid_destroy(stf_exec_place_handle grid)
 
 stf_exec_place_scope_handle stf_exec_place_scope_enter(stf_exec_place_handle place, size_t idx)
 {
-  return stf_guard([&]() -> stf_exec_place_scope_handle {
+  return stf_boundary->*[&]() -> stf_exec_place_scope_handle {
     _CCCL_ASSERT(place != nullptr, "exec_place handle must not be null");
     stf_require_index(idx, from_opaque(place)->size(), "exec_place index");
     return to_opaque(new exec_place_scope(*from_opaque(place), idx));
-  });
+  };
 }
 
 stf_error_t stf_exec_place_scope_exit(stf_exec_place_scope_handle scope)
 {
-  return stf_guard([&] {
+  return stf_boundary->*[&] {
     delete from_opaque(scope);
-  });
+    return STF_SUCCESS;
+  };
 }
 
 stf_data_place_handle stf_exec_place_get_affine_data_place(stf_exec_place_handle h)
 {
-  return stf_guard([&]() -> stf_data_place_handle {
+  return stf_boundary->*[&]() -> stf_data_place_handle {
     _CCCL_ASSERT(h != nullptr, "exec_place handle must not be null");
     return to_opaque(new data_place(from_opaque(h)->affine_data_place()));
-  });
+  };
 }
 
 stf_exec_place_resources_handle stf_exec_place_resources_create(void)
 {
-  return stf_guard([&]() -> stf_exec_place_resources_handle {
+  return stf_boundary->*[&]() -> stf_exec_place_resources_handle {
     auto res     = ::std::make_unique<exec_place_resources>();
     auto* handle = new stf_exec_place_resources_opaque_t{res.get(), true, true};
     res.release();
     return handle;
-  });
+  };
 }
 
 stf_error_t stf_exec_place_resources_destroy(stf_exec_place_resources_handle h)
 {
-  return stf_guard([&] {
+  return stf_boundary->*[&] {
     if (h == nullptr)
     {
-      return;
+      return STF_SUCCESS;
     }
     if (h->owns_resources)
     {
@@ -654,31 +724,32 @@ stf_error_t stf_exec_place_resources_destroy(stf_exec_place_resources_handle h)
     {
       delete h;
     }
-  });
+    return STF_SUCCESS;
+  };
 }
 
 CUstream stf_exec_place_pick_stream(stf_exec_place_resources_handle res, stf_exec_place_handle h, int for_computation)
 {
-  return stf_guard([&]() -> CUstream {
+  return stf_boundary->*[&]() -> CUstream {
     _CCCL_ASSERT(res != nullptr, "exec_place_resources handle must not be null");
     _CCCL_ASSERT(h != nullptr, "exec_place handle must not be null");
     return reinterpret_cast<CUstream>(from_opaque(h)->pick_stream(*from_opaque(res), for_computation != 0));
-  });
+  };
 }
 
 stf_exec_place_handle stf_exec_place_get_place(stf_exec_place_handle h, size_t idx)
 {
-  return stf_guard([&]() -> stf_exec_place_handle {
+  return stf_boundary->*[&]() -> stf_exec_place_handle {
     _CCCL_ASSERT(h != nullptr, "exec_place handle must not be null");
     stf_require_index(idx, from_opaque(h)->size(), "exec_place index");
     return to_opaque(new exec_place(from_opaque(h)->get_place(idx)));
-  });
+  };
 }
 
 stf_exec_place_handle
 stf_exec_place_green_ctx(stf_green_context_helper_handle helper, size_t idx, int use_green_ctx_data_place)
 {
-  return stf_guard([&]() -> stf_exec_place_handle {
+  return stf_boundary->*[&]() -> stf_exec_place_handle {
 #if _CCCL_CTK_AT_LEAST(12, 4)
     _CCCL_ASSERT(helper != nullptr, "green_context_helper handle must not be null");
     auto* gc_helper = from_opaque(helper);
@@ -690,15 +761,16 @@ stf_exec_place_green_ctx(stf_green_context_helper_handle helper, size_t idx, int
     (void) use_green_ctx_data_place;
     throw ::std::runtime_error("green contexts require CUDA 12.4 or later");
 #endif
-  });
+  };
 }
 
 stf_error_t stf_machine_init(void)
 {
-  return stf_guard([&] {
+  return stf_boundary->*[&] {
     // machine::instance() does real work on first call (P2P/mempool/topology setup) and can throw.
     cuda::experimental::places::reserved::machine::instance();
-  });
+    return STF_SUCCESS;
+  };
 }
 
 stf_data_place_handle stf_data_place_host(void)
